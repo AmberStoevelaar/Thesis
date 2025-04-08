@@ -7,7 +7,7 @@ warnings.filterwarnings('ignore', category=UserWarning, message='.*Data Validati
 
 def read_data(excel_path):
     # Define sheet names
-    sheets = pd.read_excel(excel_path, sheet_name=['Info Docenten', 'Info Leerlingen', 'Groepswensen', 'Eigen Indelingen'], skiprows=1, header=None)
+    sheets = pd.read_excel(excel_path, sheet_name=['Info Docenten', 'Info Leerlingen', 'Groepswensen', 'Eigen Indelingen'], skiprows=1)
 
     # Read the sheets as dataframes
     info_teachers = sheets['Info Docenten']
@@ -17,14 +17,14 @@ def read_data(excel_path):
 
     # Since group_preferences contains multiple tables, we need to identify the starting and ending rows of each table
     # Find the starting indices for each table (you can adjust this as needed)
-    start_table_1 = group_preferences[group_preferences[0] == 'Groepswensen'].index[0] +1
-    start_table_2 = group_preferences[group_preferences[0] == 'Naam Leerling 1'].index[0] + 1
-    start_table_3 = group_preferences[group_preferences[0] == 'Naam Leerling'].index[0] + 1
+    start_table_1 = group_preferences.index[0] + 1
+    start_table_2 = group_preferences[group_preferences.iloc[:, 0] == 'Naam Leerling 1'].index[0] + 2
+    start_table_3 = group_preferences[group_preferences.iloc[:, 0] == 'Naam Leerling'].index[0] + 2
 
     # Find the end indices for each table based on the next table's start
     end_table_1 = start_table_2  - 2
     end_table_2 = start_table_3 - 2
-    end_table_3 = len(group_preferences)
+    end_table_3 = len(group_preferences) + 1
 
     # Read each table into a separate dataframe using skiprows and nrows
     group_preferences = pd.read_excel(excel_path, sheet_name='Groepswensen', skiprows=start_table_1, nrows=end_table_1 - start_table_1, header=None)
@@ -35,6 +35,7 @@ def read_data(excel_path):
     group_preferences = group_preferences.iloc[1:].reset_index(drop=True).T
     group_preferences.columns = group_preferences.iloc[0]
     group_preferences = group_preferences.drop(0).reset_index(drop=True)
+    group_preferences = group_preferences.astype(int)
 
     return info_teachers, info_students, group_preferences, constraints_students, constraints_teachers, current_groups
 
@@ -124,7 +125,7 @@ def run_anonymize(school, raw_data_folder, processed_data_folder):
         os.makedirs(school_processed_folder, exist_ok=True)
     else:
         print("Data for {} already processed.".format(school))
-        exit()
+        return
 
     # Get file path
     school_path = os.path.join(raw_data_folder, school)
@@ -155,35 +156,3 @@ def run_anonymize(school, raw_data_folder, processed_data_folder):
 
 
 # TODO: aanpassen kolommen in vertaling naar goede hoeveelheid/nieuwe namen
-# if __name__ == "__main__":
-    # school = 'school_1'
-
-    # # Define paths
-    # raw_data_folder = 'data/raw_data'
-    # processed_data_folder = 'data/processed_data'
-
-    # # Only run anonymization for school if it is not already processed
-    # school_processed_folder = os.path.join(processed_data_folder, school)
-    # if not os.path.exists(school_processed_folder):
-    #     os.makedirs(school_processed_folder, exist_ok=True)
-    # else:
-    #     print("Data for {} already processed.".format(school))
-    #     exit()
-
-    # # Run the anonymization process
-    # run(school, raw_data_folder, processed_data_folder)
-    # print("Data anonymization for {} completed.".format(school))
-
-
-
-
-
-
-
-
-
-
-
-
-
-
