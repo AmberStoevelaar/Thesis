@@ -104,10 +104,10 @@ def anonymize_data(info_teachers, info_students, constraints_students, constrain
     current_groups = replace_values(current_groups, 'Student', studentId_dict)
     current_groups = replace_values(current_groups, 'Teacher', teacherId_dict)
 
-    return info_teachers, info_students, constraints_students, constraints_teachers, current_groups
+    return info_teachers, info_students, constraints_students, constraints_teachers, current_groups, studentId, teacherId
 
 
-def save_dataframes_to_csv(school, dfs, processed_data_folder):
+def save_dataframes_to_csv(school, dfs, processed_data_folder, studentId, teacherId):
     # Check if school folder exists
     school_processed_folder = os.path.join(processed_data_folder, school)
     os.makedirs(school_processed_folder, exist_ok=True)
@@ -116,6 +116,11 @@ def save_dataframes_to_csv(school, dfs, processed_data_folder):
     for df_name,df in dfs:
         file_path = os.path.join(school_processed_folder, f'{df_name}.csv')
         df.to_csv(file_path, index=False)
+
+    # Save mapping dictionaries as CSV
+    studentId.to_csv(os.path.join(school_processed_folder, 'studentIdMapping.csv'), index=False)
+    teacherId.to_csv(os.path.join(school_processed_folder, 'teacherIdMapping.csv'), index=False)
+
 
 
 def run_anonymize(school, raw_data_folder, processed_data_folder):
@@ -139,7 +144,7 @@ def run_anonymize(school, raw_data_folder, processed_data_folder):
     info_teachers, info_students, group_preferences, constraints_students, constraints_teachers, current_groups = translate_dfs(info_teachers, info_students, group_preferences, constraints_students, constraints_teachers, current_groups)
 
     # Anonymize data
-    info_teachers, info_students, constraints_students, constraints_teachers, current_groups = anonymize_data(info_teachers, info_students, constraints_students, constraints_teachers, current_groups)
+    info_teachers, info_students, constraints_students, constraints_teachers, current_groups, studentId, teacherId = anonymize_data(info_teachers, info_students, constraints_students, constraints_teachers, current_groups)
 
     # Save the processed data
     dfs = [
@@ -150,7 +155,7 @@ def run_anonymize(school, raw_data_folder, processed_data_folder):
         ('constraints_teachers', constraints_teachers),
         ('current_groups', current_groups)
     ]
-    save_dataframes_to_csv(school, dfs, processed_data_folder)
+    save_dataframes_to_csv(school, dfs, processed_data_folder, studentId, teacherId)
 
     print("Data anonymization for {} completed.".format(school))
 
