@@ -1,0 +1,32 @@
+Student,Group,Gender,Extra Care,Extra Care 2,Preference 1,Preference 2,Preference 3,Preference 4,Preference 5
+S_01,Nieuwe groep,Geslacht (Jongen/Meisje),Extra zorg 1 (Ja/Nee),Extra zorg 2 (Ja/Nee),Voorkeur 1,Voorkeur 2,Voorkeur 3,Voorkeur 4,Voorkeur 5
+S_02,4,Boy,No,Yes,S_24,S_07,S_09,S_12,S_20
+S_03,4,Boy,No,No,S_07,S_31,S_31,S_15,S_06
+S_04,4,Boy,No,No,S_28,S_02,S_15,S_04,S_20
+S_05,4,Boy,No,No,S_03,S_14,S_28,S_21,S_28
+S_06,4,Boy,No,No,S_13,S_12,S_06,S_11,S_04
+S_07,4,Boy,No,Yes,S_24,S_07,S_09,S_12,S_20
+S_08,4,Boy,No,No,S_07,S_31,S_31,S_15,S_06
+S_09,4,Boy,No,No,S_28,S_02,S_15,S_04,S_20
+S_10,4,Girl,No,No,S_03,S_14,S_28,S_21,S_28
+S_11,4,Girl,No,No,S_13,S_12,S_06,S_11,S_04
+S_12,4,Girl,No,Yes,S_24,S_07,S_09,S_12,S_20
+S_13,4,Girl,No,No,S_07,S_31,S_31,S_15,S_06
+S_14,4,Girl,No,No,S_28,S_02,S_15,S_04,S_20
+S_15,4,Girl,No,No,S_03,S_14,S_28,S_21,S_28
+S_16,4,Girl,No,Yes,S_13,S_12,S_06,S_11,S_04
+S_17,4,Girl,Yes,No,S_24,S_07,S_09,S_12,S_20
+S_18,4,Girl,No,No,S_07,S_31,S_31,S_15,S_06
+S_19,4,Girl,No,No,S_28,S_02,S_15,S_04,S_20
+S_20,4,Girl,No,No,S_03,S_14,S_28,S_21,S_28
+S_21,4,Girl,Yes,No,S_13,S_12,S_06,S_11,S_04
+S_22,5,Boy,Yes,No,S_24,S_07,S_09,S_12,S_20
+S_23,5,Boy,Yes,No,S_07,S_31,S_31,S_15,S_06
+S_24,5,Boy,No,No,S_28,S_02,S_15,S_04,S_20
+S_25,5,Boy,No,No,S_03,S_14,S_28,S_21,S_28
+S_26,5,Boy,No,Yes,S_13,S_12,S_06,S_11,S_04
+S_27,5,Boy,No,Yes,S_24,S_07,S_09,S_12,S_20
+S_28,5,Girl,No,No,S_07,S_31,S_31,S_15,S_06
+S_29,5,Girl,Yes,No,S_28,S_02,S_15,S_04,S_20
+S_30,5,Girl,No,No,S_03,S_14,S_28,S_21,S_28
+S_31,5,Girl,No,No,S_13,S_12,S_06,S_11,S_04
