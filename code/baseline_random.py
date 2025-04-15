@@ -146,7 +146,7 @@ def random_assign_student(groups, unassigned_students, assigned_students, info_s
 
             groups[group].append(student)
             assigned_students.append(student)
-            print(f"Assigned student {student} to group {group}.")
+            # print(f"Assigned student {student} to group {group}.")
             break
         else:
             print(f"WARNING: Couldn't assign student {student} due to constraints.")
@@ -188,7 +188,7 @@ def valid_groups(groups, info_students, constraints_students, constraints_teache
     return True
 
 
-def generate_random_groups(initial_groups, initial_assigned_students, info_students, constraints_students, constraints_teachers, max_group_size, max_extra_care_1, min_group_size, max_attempts=1000):
+def generate_random_groups(initial_groups, initial_assigned_students, info_students, constraints_students, constraints_teachers, max_group_size, max_extra_care_1, min_group_size, max_attempts=10):
     for i in range(max_attempts):
         groups = deepcopy(initial_groups)
         assigned_students = initial_assigned_students.copy()
@@ -219,9 +219,6 @@ def save_groups_to_csv(groups, school, results_data_folder='data/results', base_
     results_folder = os.path.join(results_data_folder, school)
     if not os.path.exists(results_folder):
         os.makedirs(results_folder, exist_ok=True)
-    else:
-        print("Data for {} already processed.".format(school))
-        return
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     file_path = os.path.join(results_folder, f"{base_name}_{timestamp}.csv")
