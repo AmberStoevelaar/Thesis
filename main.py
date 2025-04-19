@@ -5,27 +5,18 @@ import shutil
 from code.anonymize_data import run_anonymize
 from code.validate_data import validate_grouping_data
 from code.baseline_random import run_random_baseline
-from help_functions import read_df
-
-
-def read_group_preferences():
-    df = read_df(school, processed_data_folder, 'group_preferences.csv')
-    n_students, n_groups, min_group_size, max_extra_care_1, max_extra_care_2 = df.iloc[0]
-
-    # Check if all values exist
-    if pd.isnull(n_students) or pd.isnull(n_groups) or pd.isnull(min_group_size) or pd.isnull(max_extra_care_1) or pd.isnull(max_extra_care_2):
-        raise ValueError("One or more values in group preferences are missing.")
-
-    return n_students, n_groups, min_group_size, max_extra_care_1, max_extra_care_2
-
+from code.MILP import run_milp
+from help_functions import read_group_preferences
 
 
 def run_pipeline():
+    print("Running pipeline for school: {}".format(school))
+
     # Anonymize data for the specified school
     run_anonymize(school, raw_data_folder, processed_data_folder)
 
     # Read group preferences
-    n_students, n_groups, min_group_size, max_extra_care_1, max_extra_care_2 = read_group_preferences()
+    n_students, n_groups, min_group_size, max_extra_care_1, max_extra_care_2 = read_group_preferences(school, processed_data_folder)
 
     # Validate grouping input data
     is_valid = validate_grouping_data(school, processed_data_folder, n_students, n_groups, min_group_size, max_extra_care_1, max_extra_care_2)
@@ -40,15 +31,18 @@ def run_pipeline():
     if run_baseline_random:
         run_random_baseline(school, processed_data_folder)
 
-
+    # Run ILP algorithm
+    if run_baseline_ilp:
+        # run_milp(school, processed_data_folder)
+        run_milp()
 
 
 if __name__ == "__main__":
     # Define variables for this run
     school = 'school_1'
     random_seed = 42
-    run_baseline_random = True
-    run_baseline_ilp = False
+    run_baseline_random = False
+    run_baseline_ilp = True
     run_cp = False
 
     # Define paths

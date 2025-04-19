@@ -7,14 +7,14 @@ S_05,4,Boy,No,No,S_12,S_11,S_05,S_10,S_03
 S_06,4,Boy,No,Yes,S_23,S_06,S_08,S_11,S_19
 S_07,4,Boy,No,No,S_06,S_30,S_30,S_14,S_05
 S_08,4,Boy,No,No,S_27,S_01,S_14,S_03,S_19
-S_09,4,Girl,Yes,No,S_02,S_13,S_27,S_20,S_27
+S_09,4,Girl,No,No,S_02,S_13,S_27,S_20,S_27
 S_10,4,Girl,No,No,S_12,S_11,S_05,S_10,S_03
 S_11,4,Girl,No,Yes,S_23,S_06,S_08,S_11,S_19
 S_12,4,Girl,No,No,S_06,S_30,S_30,S_14,S_05
 S_13,4,Girl,No,No,S_27,S_01,S_14,S_03,S_19
 S_14,4,Girl,No,No,S_02,S_13,S_27,S_20,S_27
 S_15,4,Girl,No,Yes,S_12,S_11,S_05,S_10,S_03
-S_16,4,Girl,No,No,S_23,S_06,S_08,S_11,S_19
+S_16,4,Girl,Yes,No,S_23,S_06,S_08,S_11,S_19
 S_17,4,Girl,No,No,S_06,S_30,S_30,S_14,S_05
 S_18,4,Girl,No,No,S_27,S_01,S_14,S_03,S_19
 S_19,4,Girl,No,No,S_02,S_13,S_27,S_20,S_27

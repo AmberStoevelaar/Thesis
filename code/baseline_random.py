@@ -4,27 +4,10 @@ import os
 from datetime import datetime
 
 from copy import deepcopy
-from help_functions import read_df
+from help_functions import read_df, get_assigned_students, is_assigned, get_group, get_max_group_size
 
 # Help functions
-def get_max_group_size(min_group_size, n_students, n_groups):
-    remaining = n_students - ( min_group_size * n_groups)
-    max_size = min_group_size + (remaining // n_groups)
-    if remaining % n_groups != 0:
-        max_size += 1
-    return max_size
 
-def get_assigned_students(groups):
-    return [student for group in groups.values() for student in group]
-
-def is_assigned(student, groups):
-    if student in get_assigned_students(groups):
-        return True
-    return False
-
-def get_group(student, groups):
-    group = [group for group in groups if student in groups[group]]
-    return group[0]
 
 
 

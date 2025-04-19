@@ -1,7 +1,7 @@
 import pandas as pd
 import os
 
-from help_functions import read_df
+from help_functions import read_df, get_max_group_size
 
 # Student-student constraints have a yes AND a no
 
@@ -15,13 +15,6 @@ from help_functions import read_df
 # Two student-teacher pairs cannot be not together
 # A student has both a "Yes" and a "No" to the same teacher
 
-
-def get_max_group_size(min_group_size, n_students, n_groups):
-    remaining = n_students - ( min_group_size * n_groups)
-    max_size = min_group_size + (remaining // n_groups)
-    if remaining % n_groups != 0:
-        max_size += 1
-    return max_size
 
 def validate_teachers(info_teachers, constraints_teachers, current_groups):
     teachers = info_teachers['Teacher'].tolist()
