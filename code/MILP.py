@@ -91,12 +91,26 @@ def create_and_solve_model(school, processed_data_folder, deviation, min_prefs_p
     y = {s1: {s2: pulp.LpVariable(f'y_{s1}_{s2}', cat='Binary') if s1 != s2 else None for s2 in students} for s1 in students}
 
     # y_group[s1][s2][t] = 1 if student s1 with student s2 with teacher t, 0 else
+    # y_group = {
+    #     s1: {s2: {t: pulp.LpVariable(f'y_{s1}_{s2}_{t}', cat='Binary') if s1 < s2 else None for t in teachers}
+    #         for s2 in students}
+    #     for s1 in students
+    # }
+
     y_group = {
-        s1: {s2: {t: pulp.LpVariable(f'y_{s1}_{s2}_{t}', cat='Binary') if s1 < s2 else None for t in teachers}
+        s1: {s2: {t: pulp.LpVariable(f'y_{s1}_{s2}_{t}', cat='Binary') for t in teachers}
             for s2 in students}
         for s1 in students
     }
 
+    # y_group = {
+    #     s1: {
+    #         s2: {
+    #             t: pulp.LpVariable(f'y_{s1}_{s2}_{t}', cat='Binary')
+    #             for t in teachers
+    #         } for s2 in students if s1 < s2
+    #     } for s1 in students
+    # }
 
     # OBJECTIVE FUNCTION
     score = preference_matrix + preference_matrix.T
@@ -108,7 +122,6 @@ def create_and_solve_model(school, processed_data_folder, deviation, min_prefs_p
     ILO += sum([y[s1][s2] * score[student_index[s1], student_index[s2]] for s1 in students for s2 in students if student_index[s1] < student_index[s2]]), "total_score"
 
 
-
     # CONSTRAINTS
 
     # 2. Link y with y_group
@@ -118,13 +131,20 @@ def create_and_solve_model(school, processed_data_folder, deviation, min_prefs_p
                 # ILO += y[s1][s2] == sum([y_group[s1][s2][t] for t in teachers]), f'set_y_{s1}_{s2}'
                 ILO += y[s1][s2] == sum([y_group[s1][s2][t] for t in teachers if y_group[s1][s2][t] is not None]), f'set_y_{s1}_{s2}'
 
-    # 3. Set y_group
-    for s1 in students:
-        for s2 in students:
-            if s1 != s2:
-                for t in teachers:
-                    ILO += y_group[s1][s2][t] <= (x[s1][t] + x[s2][t]) / 2, f'prop_1_y_group_{s1}_{s2}_{t}'
-                    ILO += y_group[s1][s2][t] >= x[s1][t] + x[s2][t] - 1, f'prop_2_y_group_{s1}_{s2}_{t}'
+    # # 3. Set y_group
+    # for s1 in students:
+    #     for s2 in students:
+    #         if s1 != s2:
+    #             for t in teachers:
+    #                 ILO += y_group[s1][s2][t] <= (x[s1][t] + x[s2][t]) / 2, f'prop_1_y_group_{s1}_{s2}_{t}'
+    #                 ILO += y_group[s1][s2][t] >= x[s1][t] + x[s2][t] - 1, f'prop_2_y_group_{s1}_{s2}_{t}'
+
+    for idx1, s1 in enumerate(students):
+        for idx2 in range(idx1 + 1, len(students)):
+            s2 = students[idx2]
+            for t in teachers:
+                ILO += y_group[s1][s2][t] <= (x[s1][t] + x[s2][t]) / 2, f'prop_1_y_group_{s1}_{s2}_{t}'
+                ILO += y_group[s1][s2][t] >= x[s1][t] + x[s2][t] - 1, f'prop_2_y_group_{s1}_{s2}_{t}'
 
     # 1. Each student is assigned to exactly one teacher
     for s1 in students:
@@ -158,7 +178,6 @@ def create_and_solve_model(school, processed_data_folder, deviation, min_prefs_p
         extra_care_values = dict(zip(info_students['Student'], info_students['Extra Care'].map({'Yes': 1, 'No': 0})))
         ILO += pulp.lpSum([x[s][t] * extra_care_values[s] for s in students]) <= max_extra_care_1, f"max_extra_care_1_{t}"
 
-
         # 7. Each group has at most max_extra_care_2 students with extra care 2
         # ILO += pulp.lpSum([x[s][t] * info_students.loc[info_students['Student'] == s, 'Extra Care 2'].values[0] for s in students]) <= max_extra_care_2, f"max_extra_care_2_{t}"
         extra_care_2_values = dict(zip(info_students['Student'], info_students['Extra Care 2'].map({'Yes': 1, 'No': 0})))
@@ -189,20 +208,20 @@ def create_and_solve_model(school, processed_data_folder, deviation, min_prefs_p
     for s, t in inclusions_teacher:
         ILO += x[s][t] == 1, f'inclusion_{s}_{t}'
 
-    # # 10. Each student has at least min_prefs_per_student preferences
-    # has_preference = { s: int(any(preference_matrix[students.index(s)])) for s in students }
-    # for i, s in enumerate(students):
-    #     total_prefs_matched = (
-    #         pulp.lpSum([preference_matrix[i][j] * y[students[j]][s] for j in range(0, i)]) +
-    #         pulp.lpSum([preference_matrix[i][j] * y[s][students[j]] for j in range(i + 1, n_students)])
-    #     )
-    #     ILO += total_prefs_matched >= min_prefs_per_student * has_preference[s], f'min_prefs_for_{s}'
+    # 10. Each student has at least min_prefs_per_student preferences
+    has_preference = { s: int(any(preference_matrix[students.index(s)])) for s in students }
+    for i, s in enumerate(students):
+        total_prefs_matched = (
+            pulp.lpSum([preference_matrix[i][j] * y[students[j]][s] for j in range(0, i)]) +
+            pulp.lpSum([preference_matrix[i][j] * y[s][students[j]] for j in range(i + 1, n_students)])
+        )
+        ILO += total_prefs_matched >= min_prefs_per_student * has_preference[s], f'min_prefs_for_{s}'
 
 
     # Solve
     # ILO.solve(pulp.CBC_CMD(msg=True, timeLimit=30 * 60))
     # ILO.solve(pulp.PULP_CBC_CMD(msg=True, timeLimit=3 * 60, threads=16))
-    ILO.solve(pulp.PULP_CBC_CMD(msg=True, timeLimit=100))
+    ILO.solve(pulp.PULP_CBC_CMD(msg=True))
 
 
     print(f"Solver Status: {pulp.LpStatus[ILO.status]}")
@@ -213,12 +232,12 @@ def create_and_solve_model(school, processed_data_folder, deviation, min_prefs_p
             if pulp.value(x[s][t]) == 1:
                 print(f"  {s} → {t}")
 
-    # Optional: Print pairings that fulfilled preferences
-    print("\nMatched preferences (student pairs with 1-sided preference):")
-    for s1 in students:
-        for s2 in students:
-            if s1 != s2 and pulp.value(y[s1][s2]) == 1 and preference_matrix[student_index[s1]][student_index[s2]] == 1:
-                print(f"  {s1} ↔ {s2}")
+    # # Optional: Print pairings that fulfilled preferences
+    # print("\nMatched preferences (student pairs with 1-sided preference):")
+    # for s1 in students:
+    #     for s2 in students:
+    #         if s1 != s2 and pulp.value(y[s1][s2]) == 1 and preference_matrix[student_index[s1]][student_index[s2]] == 1:
+    #             print(f"  {s1} ↔ {s2}")
 
     # print("\nAll variable values:")
     # for v in ILO.variables():
