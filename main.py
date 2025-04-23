@@ -5,7 +5,7 @@ import shutil
 from code.anonymize_data import run_anonymize
 from code.validate_data import validate_grouping_data
 from code.baseline_random import run_random_baseline
-from code.MILP import run_milp
+from code.MILP2 import run_milp
 from help_functions import read_group_preferences
 
 

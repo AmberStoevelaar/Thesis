@@ -1,11 +1,10 @@
 import pandas as pd
 import os
+import numpy as np
 
-def read_df(school, processed_data_folder, file_name):
-    path = os.path.join(processed_data_folder, school)
-    file_path = os.path.join(path, file_name)
-    df = pd.read_csv(file_path)
-    return df
+def read_df(school, processed_data_folder, filename):
+    path = os.path.join(processed_data_folder, school, filename)
+    return pd.read_csv(path)
 
 def read_group_preferences(school, processed_data_folder):
     df = read_df(school, processed_data_folder, 'group_preferences.csv')
@@ -35,3 +34,25 @@ def is_assigned(student, groups):
 def get_group(student, groups):
     group = [group for group in groups if student in groups[group]]
     return group[0]
+
+def create_preference_matrix(info_students, n_students):
+    preference_matrix = np.zeros((n_students, n_students))
+    students = info_students['Student'].tolist()
+
+    for i in range(n_students):
+        preferences_i = info_students.loc[info_students['Student'] == students[i],
+                                        ['Preference 1', 'Preference 2', 'Preference 3', 'Preference 4', 'Preference 5']].values.flatten().tolist()
+        preferences_i = [p for p in preferences_i if pd.notna(p)]
+
+        for j in range(n_students):
+            if i == j:
+                continue
+
+            # Only one sided preferences
+            if students[j] in preferences_i:
+                preference_matrix[i][j] = 1
+
+    return preference_matrix
+
+
+

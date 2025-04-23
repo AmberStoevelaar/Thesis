@@ -41,7 +41,6 @@ def read_variables(data):
 def create_variables(students, teachers):
     x = {s: {t: pulp.LpVariable(f"x_{s}_{t}", cat="Binary") for t in teachers} for s in students}
     y = {s1: {s2: pulp.LpVariable(f'y_{s1}_{s2}', cat='Binary') if s1 != s2 else None for s2 in students} for s1 in students}
-    # y_group = { (s1, s2, t): pulp.LpVariable(f"y_{s1}_{s2}_{t}", cat="Binary") for s1 in students for s2 in students for t in teachers }
     y_group = {s1: {s2: { t: pulp.LpVariable(f"y_{s1}_{s2}_{t}", cat="Binary") for t in teachers}
         for s2 in students if s1 != s2} for s1 in students }
     return x, y, y_group
@@ -53,27 +52,10 @@ def create_variables(students, teachers):
 def create_initial_model(x, y, y_group, students, teachers, info_students, preferences):
     ILO = pulp.LpProblem("milp", pulp.LpMaximize)
 
-    # ILO += pulp.lpSum(x.values()), "total_students"
-    # ILO += pulp.lpSum(y.values()), "total_pairs"
-    # ILO += pulp.lpSum(y_group.values()), "total_groups"
-
     # Add preference objective
     ILO, satisfied, min_satisfied, prefs_obj, min_prefs_obj = add_student_preference_objective(ILO, y, students, preferences)
 
-    # Add balancing constraints for gender, grade, and extra_care attributes
-    ILO, delta_gender, gender_obj = add_balancing_constraints(
-        ILO, x, students, teachers, info_students, attribute='Gender', weight=1.0
-    )
-
-    ILO, delta_grade, grade_obj = add_balancing_constraints(
-        ILO, x, students, teachers, info_students, attribute='Group', weight=1.0
-    )
-
-    ILO, delta_extra_care, extra_care_obj = add_balancing_constraints(
-        ILO, x, students, teachers, info_students, attribute='Extra Care', weight=1.0
-    )
-
-    total_objective = prefs_obj + min_prefs_obj + gender_obj + grade_obj + extra_care_obj
+    total_objective = prefs_obj + min_prefs_obj
     ILO += total_objective, "total_objective"
 
     return ILO
@@ -130,38 +112,28 @@ def add_hard_constraints(ILO, x, y, y_group, students, teachers, min_group_size,
 
     return ILO
 
-def add_balancing_constraints(ILO, x, students, teachers, info_students, attribute, weight=1.0):
-    # Map students to categories
+def add_balancing_constraints(ILO, x, students, teachers, info_students, attribute, deviation=0.1):
     categories = info_students[attribute].unique()
     category_students = {
-        cat: [s for s in students if info_students[info_students['Student'] == s][attribute].values[0]]
+        cat: [s for s in students if info_students.loc[info_students['Student'] == s, attribute].iloc[0] == cat]
         for cat in categories
     }
 
-    # Calculate the target number of students per teacher for each category
     target_per_teacher = {
         cat: len(category_students[cat]) / len(teachers)
         for cat in categories
     }
 
-    # Create slack variables for the difference between actual and target count
-    delta = {
-        (t, cat): pulp.LpVariable(f"delta_{attribute}_{t}_{cat}", lowBound=0)
-        for t in teachers for cat in categories
-    }
-
-    # Add balancing constraints for each teacher and category
     for t in teachers:
         for cat in categories:
-            total_in_teacher_group = pulp.lpSum(x[s][t] for s in category_students[cat])
-            ILO += total_in_teacher_group - target_per_teacher[cat] <= delta[t, cat], f"balancing_upper_{t}_{cat}"
-            ILO += target_per_teacher[cat] - total_in_teacher_group <= delta[t, cat], f"balancing_lower_{t}_{cat}"
+            lower_bound = (1 - deviation) * target_per_teacher[cat]
+            upper_bound = (1 + deviation) * target_per_teacher[cat]
+            students_in_cat = category_students[cat]
 
-    # Add balancing penalty to the objective function
-    # ILO += -weight * pulp.lpSum(delta.values()), f"balance_{attribute}_objective"
-    objective = -weight * pulp.lpSum(delta.values())
+            ILO += pulp.lpSum(x[s][t] for s in students_in_cat) >= lower_bound, f"{attribute}_{cat}_{t}_min"
+            ILO += pulp.lpSum(x[s][t] for s in students_in_cat) <= upper_bound, f"{attribute}_{cat}_{t}_max"
 
-    return ILO, delta, objective
+    return ILO
 
 def add_student_preference_objective(ILO, y, students, preference_matrix, min_weight=1.0, total_weight=1.0):
     # Map student names to indices
@@ -212,7 +184,13 @@ def create_model(school, processed_data_folder):
     ILO = add_hard_constraints(ILO, x, y, y_group, students, teachers, vars.min_group_size, vars.max_group_size, data.info_students, vars.max_extra_care_1)
     ILO = add_assignment_constraints(ILO, x, y, data.constraints_students, data.constraints_teachers)
 
+    ILO = add_balancing_constraints(ILO, x, students, teachers, data.info_students, attribute='Gender', deviation=0.1)
+    ILO = add_balancing_constraints(ILO, x, students, teachers, data.info_students, attribute='Group', deviation=0.1)
+    ILO = add_balancing_constraints(ILO, x, students, teachers, data.info_students, attribute='Extra Care', deviation=0.1)
+
     return ILO
+
+
 
 def solve_model(ILO):
     ILO.solve(pulp.PULP_CBC_CMD(msg=True))
@@ -239,7 +217,6 @@ def save_results(ILO, start_time, output_file="solver_results.csv"):
             writer.writerow([v.name, v.varValue])
 
     print(f"Results saved to {output_file}")
-
 
 
 def run_milp():
