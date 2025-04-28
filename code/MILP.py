@@ -13,7 +13,7 @@ class InputData:
         self.constraints_students = constraints_students
         self.constraints_teachers = constraints_teachers
 
-class GroupVars:
+class Groupvariables:
     def __init__(self, n_students, n_groups, min_group_size, max_extra_care_1, max_extra_care_2, max_group_size):
         self.n_students = n_students
         self.n_groups = n_groups
@@ -35,7 +35,7 @@ def read_variables(data):
     group_preferences = data.group_preferences
     n_students, n_groups, min_group_size, max_extra_care_1, max_extra_care_2 = group_preferences.iloc[0]
     max_group_size = get_max_group_size(min_group_size, n_students, n_groups)
-    return GroupVars(n_students, n_groups, min_group_size, max_extra_care_1, max_extra_care_2, max_group_size)
+    return Groupvariables(n_students, n_groups, min_group_size, max_extra_care_1, max_extra_care_2, max_group_size)
 
 
 def create_variables(students, teachers):
@@ -198,18 +198,18 @@ def add_student_preference_objective(ILO, y, students, preference_matrix, min_we
 def create_model(school, processed_data_folder):
     # Read data
     data = read_dfs(school, processed_data_folder)
-    vars = read_variables(data)
+    variables = read_variables(data)
 
     students = data.info_students['Student'].tolist()
     teachers = data.info_teachers['Teacher'].tolist()
 
-    preference_matrix = create_preference_matrix(data.info_students, vars.n_students)
+    preference_matrix = create_preference_matrix(data.info_students, variables.n_students)
 
     x, y, y_group = create_variables(students, teachers)
     ILO = create_initial_model(x, y, y_group, students, teachers, data.info_students, preference_matrix)
 
     # Hard constraints
-    ILO = add_hard_constraints(ILO, x, y, y_group, students, teachers, vars.min_group_size, vars.max_group_size, data.info_students, vars.max_extra_care_1)
+    ILO = add_hard_constraints(ILO, x, y, y_group, students, teachers, variables.min_group_size, variables.max_group_size, data.info_students, variables.max_extra_care_1)
     ILO = add_assignment_constraints(ILO, x, y, data.constraints_students, data.constraints_teachers)
 
     return ILO

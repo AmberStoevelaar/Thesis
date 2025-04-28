@@ -1,4 +1,5 @@
 from ortools.sat.python import cp_model
+import math
 from help_functions import read_df, get_max_group_size, create_preference_matrix
 
 class InputData:
@@ -9,7 +10,7 @@ class InputData:
         self.constraints_students = constraints_students
         self.constraints_teachers = constraints_teachers
 
-class GroupVars:
+class Groupvariables:
     def __init__(self, n_students, n_groups, min_group_size, max_extra_care_1, max_extra_care_2, max_group_size):
         self.n_students = n_students
         self.n_groups = n_groups
@@ -31,121 +32,179 @@ def read_variables(data):
     group_preferences = data.group_preferences
     n_students, n_groups, min_group_size, max_extra_care_1, max_extra_care_2 = group_preferences.iloc[0]
     max_group_size = get_max_group_size(min_group_size, n_students, n_groups)
-    return GroupVars(n_students, n_groups, min_group_size, max_extra_care_1, max_extra_care_2, max_group_size)
+    return Groupvariables(n_students, n_groups, min_group_size, max_extra_care_1, max_extra_care_2, max_group_size)
 
 
 
-def add_objective(model, x, y, students, info_students):
-    preferences = create_preference_matrix(info_students, vars.n_students)
+def add_objective(model, x, y, students, data, variables):
+    preferences = create_preference_matrix(data.info_students, variables.n_students)
     objectives = []
 
-    # TODO CHECKEN
+    # Maximize student preferences
     for s1 in students:
         for s2 in students:
             if s1 != s2:
-                objectives.append(preferences[s1, s2] * y[s1, s2])
-
-
-    # TODO add min prefs
+                objectives.append(preferences.loc[s1, s2] * y[s1, s2])
 
     # Add the objective to the model
     model.Maximize(sum(objectives))
 
     return model
 
+def add_balance_constraints(model, attribute, deviation, x, teachers, data):
+    categories = data.info_students[attribute].unique()
+    category_students = {cat: data.info_students[data.info_students[attribute] == cat]['Student'].tolist() for cat in categories}
+    target_per_teacher = {cat: len(category_students[cat]) / len(teachers) for cat in categories}
 
-# TODO constraints concreet maken
-def add_hard_constraints(model, x, y, students, teachers, data):
-    # Constraints: each student must be assigned to exactly one teacher
-    for s in students:
-        model.Add(sum(x[s, t] for t in teachers) == 1)
+    for t in teachers:
+        for cat in categories:
+            lower_bound = math.floor((1 - deviation) * target_per_teacher[cat])
+            upper_bound = math.ceil((1 + deviation) * target_per_teacher[cat])
+            print(f"Adding balance constraints for {cat} in teacher {t}: [{lower_bound}, {upper_bound}]")
 
-    # Group constraints: if y[s1][s2] = 1, then assign them to the same teacher
+            # Get the list of students in this category
+            students_in_cat = category_students[cat]
+
+            # Add the balancing constraints for this category
+            model.Add(sum(x[s, t] for s in students_in_cat) >= lower_bound)
+            model.Add(sum(x[s, t] for s in students_in_cat) <= upper_bound)
+
+    return model
+
+def add_hard_constraints(model, x, y, y_group, students, teachers, data, variables):
     for s1 in students:
+        # Each student must be assigned to exactly one teacher
+        # model.Add(sum(x[s1, t] for t in teachers) == 1)
+        model.AddExactlyOne(x[s1, t] for t in teachers)
+
         for s2 in students:
             if s1 != s2:
-                model.Add(y[s1, s2] == sum(x[s1, t] + x[s2, t] for t in teachers) // 2)
+                # Link y with y_group
+                model.AddMaxEquality(y[s1, s2], [y_group[s1, s2, t] for t in teachers])
+                # model.Add(y[s1, s2] == sum(y_group[s1, s2, t] for t in teachers))
 
-    return model
+                for t in teachers:
+                    # Set y_group if both students are assigned to the same teacher
+                    model.AddBoolAnd([x[s1, t], x[s2, t]]).OnlyEnforceIf(y_group[s1, s2, t])
+                    model.AddBoolOr([x[s1, t].Not(), x[s2, t].Not()]).OnlyEnforceIf(y_group[s1, s2, t].Not())
 
 
-# TODO: implement assignment constraints
-def add_assignment_constraints(model, x, students, teachers):
-    # Example of assignment constraint
-    for s in students:
+
+    # Assignment constraints
+    for _, (s1, s2, together) in data.constraints_students.iterrows():
+        print(f"Adding constraint for students {s1} and {s2}: {together}")
+
         for t in teachers:
-            model.Add(x[s, t] == 1).OnlyEnforceIf([x[s, t]])
+            if together == "Yes":
+                # Students must be together
+                model.Add(x[s1, t] == x[s2, t])
+            elif together == "No":
+                # Students must not be together
+                model.Add(x[s1, t] + x[s2, t] <= 1)
+
+    for _, (s, t, together) in data.constraints_teachers.iterrows():
+        print(f"Adding constraint for student {s} and teacher {t}: {together}")
+
+        if together == "Yes":
+            # Student must be with the teacher
+            model.Add(x[s, t] == 1)
+        elif together == "No":
+            # Student must not be with the teacher
+            model.Add(x[s, t] == 0)
+
+    # Maximum group size constraint
+    for t in teachers:
+        model.Add(sum(x[s, t] for s in students) >= variables.min_group_size)
+        model.Add(sum(x[s, t] for s in students) <= variables.max_group_size)
+
+    # Maximum extra care constraints
+    extra_care_values = dict(zip(data.info_students['Student'], data.info_students['Extra Care'].map({'Yes': 1, 'No': 0})))
+    for t in teachers:
+        model.Add(sum(x[s, t] * extra_care_values[s] for s in students) <= variables.max_extra_care_1)
+
+    # Add balance constraints
+    model = add_balance_constraints(model, 'Gender', 0.1, x, teachers, data)
+    model = add_balance_constraints(model, 'Group', 0.1, x, teachers, data)
 
     return model
 
 
-def add_balance_constraints(model, data, students, teachers, x):
-    # Example of balancing constraint
-    categories = data.info_students['Gender'].unique()
-    for category in categories:
-        for t in teachers:
-            model.Add(sum(x[s, t] for s in students if data.info_students.loc[data.info_students['Student'] == s, 'Gender'].iloc[0] == category) >= (1 - 0.1) * len(students) / len(teachers))
-            model.Add(sum(x[s, t] for s in students if data.info_students.loc[data.info_students['Student'] == s, 'Gender'].iloc[0] == category) <= (1 + 0.1) * len(students) / len(teachers))
-
-    return model
-
-
-
-
-def create_initial_model(students, teachers, data):
+def create_initial_model(students, teachers, data, variables):
     model = cp_model.CpModel()
 
     # Decision variables
+    # x[s][t] = 1 if student s assigned to teacher t
     x = {}
     for s in students:
         for t in teachers:
             x[s, t] = model.NewBoolVar(f'x_{s}_{t}')
 
+    # y[s1][s2] = 1 if students s1 and s2 are together
     y = {}
     for s1 in students:
         for s2 in students:
             if s1 != s2:
                 y[s1, s2] = model.NewBoolVar(f'y_{s1}_{s2}')
+            else:
+                y[s1, s2] = 0
 
-    #TODO: look at more variables
+    # y_group[s1][s2][t] = 1 if students s1 and s2 are together with teacher t
+    y_group = {}
+    for s1 in students:
+        for s2 in students:
+            if s1 != s2:
+                for t in teachers:
+                    y_group[s1, s2, t] = model.NewBoolVar(f'y_{s1}_{s2}_{t}')
 
-    model = add_objective(model, x, y, students, data.info_students)
+    model = add_objective(model, x, y, students, data, variables)
 
-    return model, x, y
+    return model, x, y, y_group
 
-
-
-def create_model():
-    data = read_dfs('school_2', 'data/processed_data')
-    vars = read_variables(data)
+def create_model(school, processed_data_folder):
+    data = read_dfs(school, processed_data_folder)
+    variables = read_variables(data)
 
     students = data.info_students['Student'].tolist()
     teachers = data.info_teachers['Teacher'].tolist()
 
     # Initialize model
-    model, x, y = create_initial_model(students, teachers)
+    model, x, y, y_group = create_initial_model(students, teachers, data, variables)
 
     # Add hard constraints
-    model = add_hard_constraints(model, x, y, students, teachers, data)
+    model = add_hard_constraints(model, x, y, y_group, students, teachers, data, variables)
 
-    # Add assignment constraints
-    model = add_assignment_constraints(model, x, students, teachers)
+    return model, x, y, y_group
 
-    # Add balance constraints
-    model = add_balance_constraints(model, data, students, teachers, x)
-
-    return model
-
-
-
-
-def solve_model(model, x, y, z):
+def solve_model(model, x, y, y_group):
     # Create a solver and solve
     solver = cp_model.CpSolver()
     status = solver.Solve(model)
 
-    if status == cp_model.FEASIBLE:
-        print(f"x={solver.Value(x)}, y={solver.Value(y)}, z={solver.Value(z)}")
+    print(f"Status: {solver.StatusName(status)}")
+
+    if status in (cp_model.FEASIBLE, cp_model.OPTIMAL):
+        # print(f"x={solver.Value(x)}, y={solver.Value(y)}, y_group={solver.Value(y_group)}")
+        print(f'solution: {solver.ObjectiveValue()}')
+        # print(f'x={solver.Value(x)}')
+        print({key: solver.Value(var) for key, var in x.items()})
+        solution = {key: solver.Value(var) for key, var in x.items()}
+
+        from collections import defaultdict
+        groups = defaultdict(list)
+
+        for (student, teacher), assigned in solution.items():
+            if assigned == 1:
+                groups[teacher].append(student)
+
+        # Optionally: make it into a nice pandas DataFrame
+        import pandas as pd
+
+        df = pd.DataFrame([(teacher, student) for teacher, students in groups.items() for student in students],
+                        columns=['Teacher', 'Student'])
+
+        print(df)
+
+
 
 def save_solution():
     pass
@@ -156,15 +215,7 @@ def run_cp():
     school = 'school_2'
     processed_data_folder = 'data/processed_data'
 
-    model, x, y, z = create_model()
-    solve_model(model, x, y, z)
+    model, x, y, y_group = create_model(school, processed_data_folder)
+    solve_model(model, x, y, y_group)
 
-
-
-
-
-    for s1 in students:
-        for s2 in students:
-            if s1 != s2:
-                objective_terms.append(preference_matrix[s1, s2] * y[s1, s2])
 

@@ -6,6 +6,7 @@ from code.anonymize_data import run_anonymize
 from code.validate_data import validate_grouping_data
 from code.baseline_random import run_random_baseline
 from code.MILP2 import run_milp
+from code.CP import run_cp
 from help_functions import read_group_preferences
 
 
@@ -36,14 +37,19 @@ def run_pipeline():
         # run_milp(school, processed_data_folder)
         run_milp()
 
+    # Run CP algorithm
+    if run_cp_model:
+        # run_cp(school, processed_data_folder)
+        run_cp()
+
 
 if __name__ == "__main__":
     # Define variables for this run
     school = 'school_1'
     random_seed = 42
     run_baseline_random = False
-    run_baseline_ilp = True
-    run_cp = False
+    run_baseline_ilp = False
+    run_cp_model = True
 
     # Define paths
     raw_data_folder = 'data/raw_data'

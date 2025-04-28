@@ -35,24 +35,42 @@ def get_group(student, groups):
     group = [group for group in groups if student in groups[group]]
     return group[0]
 
+# def create_preference_matrix(info_students, n_students):
+#     preference_matrix = np.zeros((n_students, n_students))
+#     students = info_students['Student'].tolist()
+
+#     for i in range(n_students):
+#         preferences_i = info_students.loc[info_students['Student'] == students[i],
+#                                         ['Preference 1', 'Preference 2', 'Preference 3', 'Preference 4', 'Preference 5']].values.flatten().tolist()
+#         preferences_i = [p for p in preferences_i if pd.notna(p)]
+
+#         for j in range(n_students):
+#             if i == j:
+#                 continue
+
+#             # Only one sided preferences
+#             if students[j] in preferences_i:
+#                 preference_matrix[i][j] = 1
+
+#     return preference_matrix
+
+
 def create_preference_matrix(info_students, n_students):
-    preference_matrix = np.zeros((n_students, n_students))
     students = info_students['Student'].tolist()
+    preference_matrix = pd.DataFrame(0, index=students, columns=students)
 
     for i in range(n_students):
         preferences_i = info_students.loc[info_students['Student'] == students[i],
-                                        ['Preference 1', 'Preference 2', 'Preference 3', 'Preference 4', 'Preference 5']].values.flatten().tolist()
+                                          ['Preference 1', 'Preference 2', 'Preference 3', 'Preference 4', 'Preference 5']].values.flatten().tolist()
         preferences_i = [p for p in preferences_i if pd.notna(p)]
 
         for j in range(n_students):
             if i == j:
                 continue
 
-            # Only one sided preferences
             if students[j] in preferences_i:
-                preference_matrix[i][j] = 1
+                preference_matrix.loc[students[i], students[j]] = 1
 
     return preference_matrix
-
 
 
