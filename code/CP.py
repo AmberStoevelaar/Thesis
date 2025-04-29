@@ -1,5 +1,8 @@
 from ortools.sat.python import cp_model
 import math
+import os
+from datetime import datetime
+import pandas as pd
 from help_functions import read_df, get_max_group_size, create_preference_matrix
 
 class InputData:
@@ -45,6 +48,8 @@ def add_objective(model, x, y, students, data, variables):
         for s2 in students:
             if s1 != s2:
                 objectives.append(preferences.loc[s1, s2] * y[s1, s2])
+
+    # TODO: add fairness objective
 
     # Add the objective to the model
     model.Maximize(sum(objectives))
@@ -175,6 +180,8 @@ def create_model(school, processed_data_folder):
 
     return model, x, y, y_group
 
+
+
 def solve_model(model, x, y, y_group):
     # Create a solver and solve
     solver = cp_model.CpSolver()
@@ -186,36 +193,39 @@ def solve_model(model, x, y, y_group):
         # print(f"x={solver.Value(x)}, y={solver.Value(y)}, y_group={solver.Value(y_group)}")
         print(f'solution: {solver.ObjectiveValue()}')
         # print(f'x={solver.Value(x)}')
-        print({key: solver.Value(var) for key, var in x.items()})
+        # print({key: solver.Value(var) for key, var in x.items()})
         solution = {key: solver.Value(var) for key, var in x.items()}
 
-        from collections import defaultdict
-        groups = defaultdict(list)
-
-        for (student, teacher), assigned in solution.items():
-            if assigned == 1:
-                groups[teacher].append(student)
-
-        # Optionally: make it into a nice pandas DataFrame
-        import pandas as pd
-
-        df = pd.DataFrame([(teacher, student) for teacher, students in groups.items() for student in students],
-                        columns=['Teacher', 'Student'])
-
-        print(df)
+        return solution
 
 
+def save_solution(solution, school):
+    assignments = [
+        (student, teacher)
+        for (student, teacher), assigned in solution.items()
+        if assigned == 1
+    ]
 
-def save_solution():
-    pass
+    df = pd.DataFrame(assignments, columns=['Student', 'Teacher'])
+    df = df.sort_values(by='Teacher')
 
+    results_data_folder='data/results'
+    base_name = 'CP'
+    results_folder = os.path.join(results_data_folder, school)
+    if not os.path.exists(results_folder):
+        os.makedirs(results_folder, exist_ok=True)
+
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    file_path = os.path.join(results_folder, f"{base_name}_{timestamp}.csv")
+    df.to_csv(file_path, index=False)
 
 
 def run_cp():
-    school = 'school_2'
+    school = 'school_1'
     processed_data_folder = 'data/processed_data'
 
     model, x, y, y_group = create_model(school, processed_data_folder)
-    solve_model(model, x, y, y_group)
+    solution = solve_model(model, x, y, y_group)
+    save_solution(solution, school)
 
 
