@@ -2,6 +2,10 @@ import pandas as pd
 import os
 from check_constraints import run_check_constraints
 from results_overview import show_counts
+import sys
+
+# Add the project root to sys.path
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
 from help_functions import read_dfs, read_variables
 
 

@@ -3,43 +3,11 @@ import math
 import os
 from datetime import datetime
 import pandas as pd
-from help_functions import read_df, get_max_group_size, create_preference_matrix
-
-class InputData:
-    def __init__(self, group_preferences, info_students, info_teachers, constraints_students, constraints_teachers):
-        self.group_preferences = group_preferences
-        self.info_students = info_students
-        self.info_teachers = info_teachers
-        self.constraints_students = constraints_students
-        self.constraints_teachers = constraints_teachers
-
-class Groupvariables:
-    def __init__(self, n_students, n_groups, min_group_size, max_extra_care, max_group_size):
-        self.n_students = n_students
-        self.n_groups = n_groups
-        self.min_group_size = min_group_size
-        self.max_extra_care = max_extra_care
-        self.max_group_size = max_group_size
-
-def read_dfs(school, processed_data_folder):
-    return InputData(
-        read_df(school, processed_data_folder, 'group_preferences.csv'),
-        read_df(school, processed_data_folder, 'info_students.csv'),
-        read_df(school, processed_data_folder, 'info_teachers.csv'),
-        read_df(school, processed_data_folder, 'constraints_students.csv'),
-        read_df(school, processed_data_folder, 'constraints_teachers.csv')
-    )
-
-def read_variables(data):
-    group_preferences = data.group_preferences
-    n_students, n_groups, min_group_size, max_extra_care = group_preferences.iloc[0]
-    max_group_size = get_max_group_size(min_group_size, n_students, n_groups)
-    return Groupvariables(n_students, n_groups, min_group_size, max_extra_care, max_group_size)
-
+from help_functions import create_preference_matrix, read_dfs, read_variables
 
 
 def add_objective(model, x, y, students, data, variables):
-    preferences = create_preference_matrix(data.info_students, variables.n_students)
+    preferences = create_preference_matrix(data, variables)
     objectives = []
 
     # Maximize student preferences

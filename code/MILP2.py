@@ -3,40 +3,7 @@ import numpy as np
 import pandas as pd
 import time
 import csv
-from help_functions import read_df, get_max_group_size, create_preference_matrix
-
-class InputData:
-    def __init__(self, group_preferences, info_students, info_teachers, constraints_students, constraints_teachers):
-        self.group_preferences = group_preferences
-        self.info_students = info_students
-        self.info_teachers = info_teachers
-        self.constraints_students = constraints_students
-        self.constraints_teachers = constraints_teachers
-
-class Groupvariables:
-    def __init__(self, n_students, n_groups, min_group_size, max_extra_care, max_group_size):
-        self.n_students = n_students
-        self.n_groups = n_groups
-        self.min_group_size = min_group_size
-        self.max_extra_care = max_extra_care
-        self.max_group_size = max_group_size
-
-def read_dfs(school, processed_data_folder):
-    return InputData(
-        read_df(school, processed_data_folder, 'group_preferences.csv'),
-        read_df(school, processed_data_folder, 'info_students.csv'),
-        read_df(school, processed_data_folder, 'info_teachers.csv'),
-        read_df(school, processed_data_folder, 'constraints_students.csv'),
-        read_df(school, processed_data_folder, 'constraints_teachers.csv')
-    )
-
-def read_variables(data):
-    group_preferences = data.group_preferences
-    print(group_preferences)
-    n_students, n_groups, min_group_size, max_extra_care = group_preferences.iloc[0]
-    max_group_size = get_max_group_size(min_group_size, n_students, n_groups)
-    return Groupvariables(n_students, n_groups, min_group_size, max_extra_care, max_group_size)
-
+from help_functions import create_preference_matrix, read_dfs, read_variables
 
 def create_variables(students, teachers):
     x = {s: {t: pulp.LpVariable(f"x_{s}_{t}", cat="Binary") for t in teachers} for s in students}
@@ -49,7 +16,7 @@ def create_variables(students, teachers):
     # y[s1][s2] = 1 if student s1 and s2 are in the same group (directional)
     # y[s1][s2][t] = 1 if student s1 and s2 are in the same group with teacher t
 
-def create_initial_model(x, y, y_group, students, teachers, info_students, preferences):
+def create_initial_model(x, y, y_group, students, teachers, data, preferences):
     ILO = pulp.LpProblem("milp", pulp.LpMaximize)
 
     # Add preference objective
@@ -61,11 +28,11 @@ def create_initial_model(x, y, y_group, students, teachers, info_students, prefe
     return ILO
 
 
-def add_assignment_constraints(ILO, x, y, constraints_students, constraints_teachers):
-    exclusions_students = constraints_students[constraints_students['Together'] == 'No'][['Student 1', 'Student 2']].values.tolist()
-    exclusions_teacher = constraints_teachers[constraints_teachers['Together'] == 'No'][['Student', 'Teacher']].values.tolist()
-    inclusions_students = constraints_students[constraints_students['Together'] == 'Yes'][['Student 1', 'Student 2']].values.tolist()
-    inclusions_teacher = constraints_teachers[constraints_teachers['Together'] == 'Yes'][['Student', 'Teacher']].values.tolist()
+def add_assignment_constraints(ILO, x, y, data):
+    exclusions_students = data.constraints_students[data.constraints_students['Together'] == 'No'][['Student 1', 'Student 2']].values.tolist()
+    exclusions_teacher = data.constraints_teachers[data.constraints_teachers['Together'] == 'No'][['Student', 'Teacher']].values.tolist()
+    inclusions_students = data.constraints_students[data.constraints_students['Together'] == 'Yes'][['Student 1', 'Student 2']].values.tolist()
+    inclusions_teacher = data.constraints_teachers[data.constraints_teachers['Together'] == 'Yes'][['Student', 'Teacher']].values.tolist()
 
     # Exlusions between students
     for s1, s2 in exclusions_students:
@@ -85,7 +52,7 @@ def add_assignment_constraints(ILO, x, y, constraints_students, constraints_teac
 
     return ILO
 
-def add_hard_constraints(ILO, x, y, y_group, students, teachers, min_group_size, max_group_size, info_students, max_extra_care):
+def add_hard_constraints(ILO, x, y, y_group, students, teachers, data, variables):
     for s1 in students:
         # Each student is assigned to exactly one teacher
         ILO += pulp.lpSum([x[s1][t] for t in teachers]) == 1, f"Student_{s1}_assigned_once"
@@ -103,19 +70,19 @@ def add_hard_constraints(ILO, x, y, y_group, students, teachers, min_group_size,
 
     for t in teachers:
         # Each group has at least min_group_size and at most max_group_size students
-        ILO += pulp.lpSum([x[s][t] for s in students]) >= min_group_size, f"Teacher_{t}_min_size"
-        ILO += pulp.lpSum([x[s][t] for s in students]) <= max_group_size, f"Teacher_{t}_max_size"
+        ILO += pulp.lpSum([x[s][t] for s in students]) >= variables.min_group_size, f"Teacher_{t}_min_size"
+        ILO += pulp.lpSum([x[s][t] for s in students]) <= variables.max_group_size, f"Teacher_{t}_max_size"
 
         # Each group has at most max_extra_care students with extra care
-        extra_care_values = dict(zip(info_students['Student'], info_students['Extra Care'].map({'Yes': 1, 'No': 0})))
-        ILO += pulp.lpSum([x[s][t] * extra_care_values[s] for s in students]) <= max_extra_care, f"max_extra_care_{t}"
+        extra_care_values = dict(zip(data.info_students['Student'], data.info_students['Extra Care'].map({'Yes': 1, 'No': 0})))
+        ILO += pulp.lpSum([x[s][t] * extra_care_values[s] for s in students]) <= variables.max_extra_care, f"max_extra_care_{t}"
 
     return ILO
 
-def add_balancing_constraints(ILO, x, students, teachers, info_students, attribute, deviation=0.1):
-    categories = info_students[attribute].unique()
+def add_balancing_constraints(ILO, x, students, teachers, data, attribute, deviation=0.1):
+    categories = data.info_students[attribute].unique()
     category_students = {
-        cat: [s for s in students if info_students.loc[info_students['Student'] == s, attribute].iloc[0] == cat]
+        cat: [s for s in students if data.info_students.loc[data.info_students['Student'] == s, attribute].iloc[0] == cat]
         for cat in categories
     }
 
@@ -175,18 +142,18 @@ def create_model(school, processed_data_folder):
     students = data.info_students['Student'].tolist()
     teachers = data.info_teachers['Teacher'].tolist()
 
-    preference_matrix = create_preference_matrix(data.info_students, variables.n_students)
+    preference_matrix = create_preference_matrix(data, variables)
 
     x, y, y_group = create_variables(students, teachers)
-    ILO = create_initial_model(x, y, y_group, students, teachers, data.info_students, preference_matrix)
+    ILO = create_initial_model(x, y, y_group, students, teachers, data, preference_matrix)
 
     # Hard constraints
-    ILO = add_hard_constraints(ILO, x, y, y_group, students, teachers, variables.min_group_size, variables.max_group_size, data.info_students, variables.max_extra_care)
-    ILO = add_assignment_constraints(ILO, x, y, data.constraints_students, data.constraints_teachers)
+    ILO = add_hard_constraints(ILO, x, y, y_group, students, teachers, data, variables)
+    ILO = add_assignment_constraints(ILO, x, y, data)
 
-    ILO = add_balancing_constraints(ILO, x, students, teachers, data.info_students, attribute='Gender', deviation=0.1)
-    ILO = add_balancing_constraints(ILO, x, students, teachers, data.info_students, attribute='Grade', deviation=0.1)
-    ILO = add_balancing_constraints(ILO, x, students, teachers, data.info_students, attribute='Extra Care', deviation=0.1)
+    ILO = add_balancing_constraints(ILO, x, students, teachers, data, attribute='Gender', deviation=0.1)
+    ILO = add_balancing_constraints(ILO, x, students, teachers, data, attribute='Grade', deviation=0.1)
+    ILO = add_balancing_constraints(ILO, x, students, teachers, data, attribute='Extra Care', deviation=0.1)
 
     return ILO
 

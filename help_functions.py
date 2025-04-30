@@ -16,6 +16,41 @@ def read_group_preferences(school, processed_data_folder):
 
     return n_students, n_groups, min_group_size, max_extra_care
 
+
+class InputData:
+    def __init__(self, group_preferences, info_students, info_teachers, constraints_students, constraints_teachers, current_groups):
+        self.group_preferences = group_preferences
+        self.info_students = info_students
+        self.info_teachers = info_teachers
+        self.constraints_students = constraints_students
+        self.constraints_teachers = constraints_teachers
+        self.current_groups = current_groups
+
+class Groupvariables:
+    def __init__(self, n_students, n_groups, min_group_size, max_extra_care, max_group_size):
+        self.n_students = n_students
+        self.n_groups = n_groups
+        self.min_group_size = min_group_size
+        self.max_extra_care = max_extra_care
+        self.max_group_size = max_group_size
+
+def read_dfs(school, processed_data_folder):
+    return InputData(
+        read_df(school, processed_data_folder, 'group_preferences.csv'),
+        read_df(school, processed_data_folder, 'info_students.csv'),
+        read_df(school, processed_data_folder, 'info_teachers.csv'),
+        read_df(school, processed_data_folder, 'constraints_students.csv'),
+        read_df(school, processed_data_folder, 'constraints_teachers.csv'),
+        read_df(school, processed_data_folder, 'current_groups.csv')
+    )
+
+def read_variables(data):
+    group_preferences = data.group_preferences
+    n_students, n_groups, min_group_size, max_extra_care = group_preferences.iloc[0]
+    max_group_size = get_max_group_size(min_group_size, n_students, n_groups)
+    return Groupvariables(n_students, n_groups, min_group_size, max_extra_care, max_group_size)
+
+
 def get_max_group_size(min_group_size, n_students, n_groups):
     remaining = n_students - ( min_group_size * n_groups)
     max_size = min_group_size + (remaining // n_groups)
@@ -35,16 +70,16 @@ def get_group(student, groups):
     group = [group for group in groups if student in groups[group]]
     return group[0]
 
-def create_preference_matrix(info_students, n_students):
-    students = info_students['Student'].tolist()
+def create_preference_matrix(data, variables):
+    students = data.info_students['Student'].tolist()
     preference_matrix = pd.DataFrame(0, index=students, columns=students)
 
-    for i in range(n_students):
-        preferences_i = info_students.loc[info_students['Student'] == students[i],
+    for i in range(variables.n_students):
+        preferences_i = data.info_students.loc[data.info_students['Student'] == students[i],
                                           ['Preference 1', 'Preference 2', 'Preference 3', 'Preference 4', 'Preference 5']].values.flatten().tolist()
         preferences_i = [p for p in preferences_i if pd.notna(p)]
 
-        for j in range(n_students):
+        for j in range(variables.n_students):
             if i == j:
                 continue
 
