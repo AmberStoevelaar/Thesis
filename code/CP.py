@@ -14,12 +14,11 @@ class InputData:
         self.constraints_teachers = constraints_teachers
 
 class Groupvariables:
-    def __init__(self, n_students, n_groups, min_group_size, max_extra_care_1, max_extra_care_2, max_group_size):
+    def __init__(self, n_students, n_groups, min_group_size, max_extra_care, max_group_size):
         self.n_students = n_students
         self.n_groups = n_groups
         self.min_group_size = min_group_size
-        self.max_extra_care_1 = max_extra_care_1
-        self.max_extra_care_2 = max_extra_care_2
+        self.max_extra_care = max_extra_care
         self.max_group_size = max_group_size
 
 def read_dfs(school, processed_data_folder):
@@ -33,9 +32,9 @@ def read_dfs(school, processed_data_folder):
 
 def read_variables(data):
     group_preferences = data.group_preferences
-    n_students, n_groups, min_group_size, max_extra_care_1, max_extra_care_2 = group_preferences.iloc[0]
+    n_students, n_groups, min_group_size, max_extra_care = group_preferences.iloc[0]
     max_group_size = get_max_group_size(min_group_size, n_students, n_groups)
-    return Groupvariables(n_students, n_groups, min_group_size, max_extra_care_1, max_extra_care_2, max_group_size)
+    return Groupvariables(n_students, n_groups, min_group_size, max_extra_care, max_group_size)
 
 
 
@@ -125,11 +124,11 @@ def add_hard_constraints(model, x, y, y_group, students, teachers, data, variabl
     # Maximum extra care constraints
     extra_care_values = dict(zip(data.info_students['Student'], data.info_students['Extra Care'].map({'Yes': 1, 'No': 0})))
     for t in teachers:
-        model.Add(sum(x[s, t] * extra_care_values[s] for s in students) <= variables.max_extra_care_1)
+        model.Add(sum(x[s, t] * extra_care_values[s] for s in students) <= variables.max_extra_care)
 
     # Add balance constraints
     model = add_balance_constraints(model, 'Gender', 0.1, x, teachers, data)
-    model = add_balance_constraints(model, 'Group', 0.1, x, teachers, data)
+    model = add_balance_constraints(model, 'Grade', 0.1, x, teachers, data)
 
     return model
 
@@ -220,10 +219,7 @@ def save_solution(solution, school):
     df.to_csv(file_path, index=False)
 
 
-def run_cp():
-    school = 'school_1'
-    processed_data_folder = 'data/processed_data'
-
+def run_cp(school, processed_data_folder):
     model, x, y, y_group = create_model(school, processed_data_folder)
     solution = solve_model(model, x, y, y_group)
     save_solution(solution, school)

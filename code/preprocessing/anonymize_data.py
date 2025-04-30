@@ -43,8 +43,8 @@ def read_data(excel_path):
 def translate_dfs(info_teachers, info_students, group_preferences, constraints_students, constraints_teachers, current_groups):
     # Translate the column names to English
     info_teachers.columns = ['Teacher']
-    info_students.columns = ['Student', 'Group', 'Gender', 'Extra Care', 'Extra Care 2', 'Preference 1', 'Preference 2', 'Preference 3', 'Preference 4', 'Preference 5']
-    group_preferences.columns = ['Number of Students', 'Number of Groups', 'Minimum Group Size', 'Maximum Number Extra Care 1', 'Maximum Number Extra Care 2']
+    info_students.columns = ['Student', 'Grade', 'Gender', 'Extra Care', 'Preference 1', 'Preference 2', 'Preference 3', 'Preference 4', 'Preference 5']
+    group_preferences.columns = ['Number of Students', 'Number of Groups', 'Minimum Group Size', 'Maximum Number Extra Care']
     constraints_students.columns = ['Student 1', 'Student 2', 'Together']
     constraints_teachers.columns = ['Student', 'Teacher', 'Together']
     current_groups.columns = ['Student', 'Teacher']
@@ -52,7 +52,6 @@ def translate_dfs(info_teachers, info_students, group_preferences, constraints_s
     # Translate values in dataframes to English
     info_students['Gender'] = info_students['Gender'].replace({'Jongen': 'Boy', 'Meisje': 'Girl'})
     info_students['Extra Care'] = info_students['Extra Care'].replace({'Ja': 'Yes', 'Nee': 'No'})
-    info_students['Extra Care 2'] = info_students['Extra Care 2'].replace({'Ja': 'Yes', 'Nee': 'No'})
 
     constraints_students['Together'] = constraints_students['Together'].replace({'Ja': 'Yes', 'Nee': 'No'})
     constraints_teachers['Together'] = constraints_teachers['Together'].replace({'Ja': 'Yes', 'Nee': 'No'})

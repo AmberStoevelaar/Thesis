@@ -1,32 +1,12 @@
-import pandas as pd
-import os
-import shutil
-
-from code.anonymize_data import run_anonymize
-from code.validate_data import validate_grouping_data
 from code.baseline_random import run_random_baseline
 from code.MILP2 import run_milp
 from code.CP import run_cp
-from help_functions import read_group_preferences
+
+import sys
 
 
 def run_pipeline():
     print("Running pipeline for school: {}".format(school))
-
-    # Anonymize data for the specified school
-    run_anonymize(school, raw_data_folder, processed_data_folder)
-
-    # Read group preferences
-    n_students, n_groups, min_group_size, max_extra_care_1, max_extra_care_2 = read_group_preferences(school, processed_data_folder)
-
-    # Validate grouping input data
-    is_valid = validate_grouping_data(school, processed_data_folder, n_students, n_groups, min_group_size, max_extra_care_1, max_extra_care_2)
-    if is_valid == False:
-        school_processed_folder = os.path.join(processed_data_folder, school)
-        if os.path.exists(school_processed_folder):
-            shutil.rmtree(school_processed_folder)
-
-        exit("Grouping data is invalid. Please check the errors above.")
 
     # Run random grouping algorithm
     if run_baseline_random:
@@ -34,25 +14,38 @@ def run_pipeline():
 
     # Run ILP algorithm
     if run_baseline_ilp:
-        # run_milp(school, processed_data_folder)
-        run_milp()
+        run_milp(school, processed_data_folder)
+        # run_milp()
 
     # Run CP algorithm
     if run_cp_model:
-        # run_cp(school, processed_data_folder)
-        run_cp()
+        run_cp(school, processed_data_folder)
+        # run_cp()
 
 
 if __name__ == "__main__":
-    # Define variables for this run
-    school = 'school_1'
+    if len(sys.argv) < 3:
+        print("Usage: python script.py <school> <method: cp|milp|random> [random_seed]")
+        sys.exit(1)
+
+    school = sys.argv[1]
+    method = sys.argv[2].lower()
     random_seed = 42
-    run_baseline_random = False
-    run_baseline_ilp = False
-    run_cp_model = True
+
+    # Set which model to run
+    run_baseline_random = method == "random"
+    run_baseline_ilp = method == "milp"
+    run_cp_model = method == "cp"
+
+    # Change seed if random method is selected and seed is provided
+    if run_baseline_random and len(sys.argv) >= 4:
+        try:
+            random_seed = int(sys.argv[3])
+        except ValueError:
+            print("Random seed must be an integer.")
+            sys.exit(1)
 
     # Define paths
-    raw_data_folder = 'data/raw_data'
     processed_data_folder = 'data/processed_data'
 
     # Run pipeline

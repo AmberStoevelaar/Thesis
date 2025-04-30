@@ -106,7 +106,7 @@ def assign_includes(groups, constraints_teachers, constraints_students):
     return groups
 
 
-def random_assign_student(groups, unassigned_students, assigned_students, info_students,  constraints_students, constraints_teachers, max_group_size, max_extra_care_1):
+def random_assign_student(groups, unassigned_students, assigned_students, info_students,  constraints_students, constraints_teachers, max_group_size, max_extra_care):
     for student in unassigned_students:
         random_groups = list(groups.keys())
         random.shuffle(random_groups)
@@ -115,11 +115,9 @@ def random_assign_student(groups, unassigned_students, assigned_students, info_s
             if violates_max_group_size(group, groups, max_group_size):
                 # print(f"WARNING: Group {group} is already full.")
                 continue
-            if violates_binary(student, group, groups, info_students, 'Extra Care', max_extra_care_1):
+            if violates_binary(student, group, groups, info_students, 'Extra Care', max_extra_care):
                 # print(f"WARNING: Group {group} has too many students with Extra Care.")
                 continue
-            # if violates_binary(student, group, groups, info_students, 'Extra Care 2', max_extra_care_2):
-            #     continue
             if violates_student_pair(student, group, groups, constraints_students, assigned_students):
                 # print(f"WARNING: Student {student} violates student pair constraints in group {group}.")
                 continue
@@ -137,7 +135,7 @@ def random_assign_student(groups, unassigned_students, assigned_students, info_s
     return groups
 
 
-def valid_groups(groups, info_students, constraints_students, constraints_teachers, min_group_size, max_group_size, max_extra_care_1):
+def valid_groups(groups, info_students, constraints_students, constraints_teachers, min_group_size, max_group_size, max_extra_care):
     assigned_students = get_assigned_students(groups)
 
     for group in groups:
@@ -147,7 +145,7 @@ def valid_groups(groups, info_students, constraints_students, constraints_teache
 
         # Add additional checks for other care columns if needed in the list
         # Check Extra Care limits
-        for care_col, limit in [('Extra Care', max_extra_care_1)]:
+        for care_col, limit in [('Extra Care', max_extra_care)]:
             count = info_students[info_students['Student'].isin(groups[group]) & (info_students[care_col] == 'Yes')].shape[0]
             if count > limit:
                 print(f' violates max constraint for {care_col} in group {group} with limit {limit}.')
@@ -171,7 +169,7 @@ def valid_groups(groups, info_students, constraints_students, constraints_teache
     return True
 
 
-def generate_random_groups(initial_groups, initial_assigned_students, info_students, constraints_students, constraints_teachers, max_group_size, max_extra_care_1, min_group_size, max_attempts=10):
+def generate_random_groups(initial_groups, initial_assigned_students, info_students, constraints_students, constraints_teachers, max_group_size, max_extra_care, min_group_size, max_attempts=10):
     for i in range(max_attempts):
         groups = deepcopy(initial_groups)
         assigned_students = initial_assigned_students.copy()
@@ -186,10 +184,10 @@ def generate_random_groups(initial_groups, initial_assigned_students, info_stude
         # Run one attempt
         groups = random_assign_student(groups, unassigned_students, assigned_students,
                                        info_students, constraints_students, constraints_teachers,
-                                       max_group_size, max_extra_care_1)
+                                       max_group_size, max_extra_care)
 
         # Check if groups are valid
-        if valid_groups(groups, info_students, constraints_students, constraints_teachers, min_group_size, max_group_size, max_extra_care_1):
+        if valid_groups(groups, info_students, constraints_students, constraints_teachers, min_group_size, max_group_size, max_extra_care):
             print(f'Valid groups found after {i+1} attempts.')
             return groups
 
@@ -229,7 +227,7 @@ def run_random_baseline(school, processed_data_folder, seed=42):
     constraints_students = read_df(school, processed_data_folder, 'constraints_students.csv')
     constraints_teachers = read_df(school, processed_data_folder, 'constraints_teachers.csv')
 
-    n_students, n_groups, min_group_size, max_extra_care_1, max_extra_care_2 = group_preferences.iloc[0]
+    n_students, n_groups, min_group_size, max_extra_care = group_preferences.iloc[0]
     max_group_size = get_max_group_size(min_group_size, n_students, n_groups)
 
     # Initialize groups
@@ -241,7 +239,7 @@ def run_random_baseline(school, processed_data_folder, seed=42):
     initial_groups = assign_includes(base_groups, constraints_teachers, constraints_students)
     initial_assigned_students = get_assigned_students(initial_groups)
 
-    groups = generate_random_groups(initial_groups, initial_assigned_students, info_students, constraints_students, constraints_teachers, max_group_size, max_extra_care_1, min_group_size)
+    groups = generate_random_groups(initial_groups, initial_assigned_students, info_students, constraints_students, constraints_teachers, max_group_size, max_extra_care, min_group_size)
 
     # Save the groups to a CSV file
     save_groups_to_csv(groups, school)

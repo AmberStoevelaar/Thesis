@@ -1,83 +1,10 @@
 import pandas as pd
 import os
 from check_constraints import run_check_constraints
-
-# # Count the number of students in each group
-# group_counts = assigned_groups['Assigned Group'].value_counts().sort_index()
-
-# # Count gender in each Assigned_Group
-# gender_counts = merged.groupby("Assigned Group")["Gender"].value_counts().unstack().fillna(0)
-
-# # Count Group (4/5) in each Assigned_Group
-# grade_counts = merged.groupby("Assigned Group")["Group"].value_counts().unstack().fillna(0)
-
-# print("Number of students in each group:")
-# print(group_counts)
-
-# print("Gender count per assigned group:")
-# print(gender_counts)
-
-# print("\Grade count per assigned group:")
-# print(grade_counts)
+from results_overview import show_counts
+from help_functions import read_dfs, read_variables
 
 
-# HULP FUNCTIES
-def read_df(school, processed_data_folder, filename):
-    path = os.path.join(processed_data_folder, school, filename)
-    return pd.read_csv(path)
-
-def read_group_preferences(school, processed_data_folder):
-    df = read_df(school, processed_data_folder, 'group_preferences.csv')
-    n_students, n_groups, min_group_size, max_extra_care_1, max_extra_care_2 = df.iloc[0]
-
-    # Check if all values exist
-    if pd.isnull(n_students) or pd.isnull(n_groups) or pd.isnull(min_group_size) or pd.isnull(max_extra_care_1) or pd.isnull(max_extra_care_2):
-        raise ValueError("One or more values in group preferences are missing.")
-
-    return n_students, n_groups, min_group_size, max_extra_care_1, max_extra_care_2
-
-def get_max_group_size(min_group_size, n_students, n_groups):
-    remaining = n_students - ( min_group_size * n_groups)
-    max_size = min_group_size + (remaining // n_groups)
-    if remaining % n_groups != 0:
-        max_size += 1
-    return max_size
-
-class InputData:
-    def __init__(self, group_preferences, info_students, info_teachers, constraints_students, constraints_teachers):
-        self.group_preferences = group_preferences
-        self.info_students = info_students
-        self.info_teachers = info_teachers
-        self.constraints_students = constraints_students
-        self.constraints_teachers = constraints_teachers
-
-class Groupvariables:
-    def __init__(self, n_students, n_groups, min_group_size, max_extra_care_1, max_extra_care_2, max_group_size):
-        self.n_students = n_students
-        self.n_groups = n_groups
-        self.min_group_size = min_group_size
-        self.max_extra_care_1 = max_extra_care_1
-        self.max_extra_care_2 = max_extra_care_2
-        self.max_group_size = max_group_size
-
-def read_dfs(school, processed_data_folder):
-    return InputData(
-        read_df(school, processed_data_folder, 'group_preferences.csv'),
-        read_df(school, processed_data_folder, 'info_students.csv'),
-        read_df(school, processed_data_folder, 'info_teachers.csv'),
-        read_df(school, processed_data_folder, 'constraints_students.csv'),
-        read_df(school, processed_data_folder, 'constraints_teachers.csv')
-    )
-
-def read_variables(data):
-    group_preferences = data.group_preferences
-    n_students, n_groups, min_group_size, max_extra_care_1, max_extra_care_2 = group_preferences.iloc[0]
-    max_group_size = get_max_group_size(min_group_size, n_students, n_groups)
-    return Groupvariables(n_students, n_groups, min_group_size, max_extra_care_1, max_extra_care_2, max_group_size)
-
-
-
-# ANDERE FUNCTIES
 def get_total_preferences_satisfied(df):
     columns = ['Preference 1', 'Preference 2', 'Preference 3', 'Preference 4', 'Preference 5']
     total = 0
@@ -139,13 +66,71 @@ def get_satisfaction_rate(df):
     satisfied = get_total_preferences_satisfied(df)
     return satisfied / provided
 
+# TODO checken hoe goed dit werkt
+def get_minimum_preferences_satisfied(df):
+    columns = ['Preference 1', 'Preference 2', 'Preference 3', 'Preference 4', 'Preference 5']
+    min_satisfied = float('inf')
+
+    for _, row in df.iterrows():
+        student = row['Student']
+        student_group = row['Assigned Group']
+        prefs = row[columns].tolist()
+
+        # Count how many preferences were provided
+        prefs_provided = [p for p in prefs if not pd.isna(p)]
+        n_provided = len(prefs_provided)
+
+        if n_provided == 0:
+            continue  # Skip students with no preferences
+
+        # Count how many preferences were satisfied
+        n_satisfied = 0
+        for pref_student in prefs_provided:
+            pref_group = df.loc[df['Student'] == pref_student, 'Assigned Group'].values[0]
+            if pref_group == student_group:
+                n_satisfied += 1
+
+        # Update minimum satisfied if it's lower
+        min_satisfied = min(min_satisfied, n_satisfied)
+
+    return min_satisfied if min_satisfied != float('inf') else 0
 
 
+# def evaluate_accuracy_from_csv(assigned_groups, preferences_df):
+#     total_points = 0
+#     student_groups = assigned_groups.set_index('ID')['Assigned_Group'].to_dict()
+
+#     for _, row in preferences_df.iterrows():
+#         student_id = row['ID']
+#         preferences = row[['Preference_1', 'Preference_2', 'Preference_3', 'Preference_4', 'Preference_5']].dropna().tolist()
+
+#         assigned_group = student_groups.get(student_id)
+
+#         student_score = 0
+#         for i, preferred_student in enumerate(preferences):
+#             if preferred_student in student_groups and student_groups[preferred_student] == assigned_group:
+#                 student_score += (5 - i)
+
+#         total_points += student_score
+
+#     optimal_score = calculate_optimal_score(preferences_df)
+
+#     if optimal_score == 0:
+#         relative_excess = 0
+#     else:
+#         relative_excess = (optimal_score - total_points) / optimal_score * 100
+
+#     absolute_difference = optimal_score - total_points
+#     return total_points, optimal_score, relative_excess, absolute_difference
 
 
+# # Evaluate the accuracy
+# total_points, optimal_score, relative_excess, absolute_difference = evaluate_accuracy_from_csv(assigned_groups, preferences)
 
-
-
+# print("Total Points:", total_points)
+# print("Optimal Score:", optimal_score)
+# print("Absolute Difference:", absolute_difference)
+# print("Relative Excess (%):", relative_excess)
 
 
 
@@ -171,7 +156,8 @@ def run_evaluation(merged, data, variables):
     print(f"Satisfaction rate: {satisfaction_rate:.2f}")
 
     # Min preferences satisfied for all students with that many preferences
-
+    min_preferences = get_minimum_preferences_satisfied(merged)
+    print(f"Minimum preferences satisfied: {min_preferences}")
 
 
 
@@ -209,7 +195,7 @@ if __name__ == "__main__":
     merged = pd.merge(groups, data.info_students, on='Student', how='left')
     merged.rename(columns={'Teacher': 'Assigned Group'}, inplace=True)
 
-
+    show_counts(merged)
     run_evaluation(merged, data, variables)
 
 

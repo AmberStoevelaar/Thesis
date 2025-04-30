@@ -13,10 +13,10 @@ def violates_max_group_size(group, df, max_group_size):
         return True
     return False
 
-def violates_max_extra_care(group, df, max_extra_care_1):
+def violates_max_extra_care(group, df, max_extra_care):
     # Check if the group size is greater than the maximum extra care size
     count = df[(df["Assigned Group"] == group) & (df["Extra Care"] == "Yes")].shape[0]
-    if count > max_extra_care_1:
+    if count > max_extra_care:
         return True
     return False
 
@@ -120,7 +120,7 @@ def run_check_constraints(groups, merged, data, variables):
             return False
 
         # Check if grade ratio is violated
-        if violates_ratio(group, merged, "Group", 0.1, variables):
+        if violates_ratio(group, merged, "Grade", 0.1, variables):
             print(f"Group {group} violates Grade ratio.")
             return False
 

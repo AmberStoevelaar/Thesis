@@ -1,7 +1,9 @@
 import pandas as pd
 import os
 
-from help_functions import read_df, get_max_group_size
+def read_df(school, processed_data_folder, filename):
+    path = os.path.join(processed_data_folder, school, filename)
+    return pd.read_csv(path)
 
 # Student-student constraints have a yes AND a no
 
@@ -72,7 +74,7 @@ def validate_constraint_consistency(constraints_students, constraints_teachers):
 
 
 
-def validate_grouping_data(school, processed_data_folder, n_students, n_groups, min_group_size, max_extra_care_1, max_extra_care_2):
+def validate_grouping_data(school, processed_data_folder, n_students, n_groups, min_group_size, max_extra_care):
     # TODO: add validation if constraints are in conflict with each other
 
 
@@ -82,8 +84,7 @@ def validate_grouping_data(school, processed_data_folder, n_students, n_groups, 
     constraints_teachers = read_df(school, processed_data_folder, 'constraints_teachers.csv')
     current_groups = read_df(school, processed_data_folder, 'current_groups.csv')
 
-    n_extra_care_1 = len(info_students[info_students['Extra Care'] == 'Yes'])
-    n_extra_care_2 = len(info_students[info_students['Extra Care 2'] == 'Yes'])
+    n_extra_care = len(info_students[info_students['Extra Care'] == 'Yes'])
 
     # Check if number of students is equal to the number of students in the info_students df
     if n_students != len(info_students):
@@ -107,20 +108,12 @@ def validate_grouping_data(school, processed_data_folder, n_students, n_groups, 
         print(f"Warning: The following teachers appear in constraints or groups but not in info_teachers: {invalid_teachers}")
         return False
 
-    # Check if maximum extra care 1 * number of groups is not less than number of students with extra care 1
-    if n_extra_care_1 > max_extra_care_1 * n_groups:
-        print(f"Error: The maximum number of extra care 1 students per group is {max_extra_care_1}, "
-              f"but there are {n_extra_care_1} students with extra care 1. "
-              f"You need to increase the maximum number of extra care 1 students per group or increase the number of groups.")
+    # Check if maximum extra care * number of groups is not less than number of students with extra care
+    if n_extra_care > max_extra_care * n_groups:
+        print(f"Error: The maximum number of extra care students per group is {max_extra_care}, "
+              f"but there are {n_extra_care} students with extra care. "
+              f"You need to increase the maximum number of extra care students per group or increase the number of groups.")
         return False
-
-    # Check if maximum extra care 2 * number of groups is not less than number of students with extra care 2
-    if n_extra_care_2 > max_extra_care_2 * n_groups:
-        print(f"Error: The maximum number of extra care 2 students per group is {max_extra_care_2}, "
-              f"but there are {n_extra_care_2} students with extra care 2. "
-              f"You need to increase the maximum number of extra care 2 students per group or increase the number of groups.")
-        return False
-
 
     # Check constraint consistency
     invalid_constraints = validate_constraint_consistency(constraints_students, constraints_teachers)
