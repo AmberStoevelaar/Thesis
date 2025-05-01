@@ -1,86 +1,176 @@
 import pandas as pd
 import os
 import sys
+from collections import defaultdict, deque
+import itertools
 
 # Add the project root to sys.path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
-from help_functions import read_dfs, read_variables
+from help_functions import read_dfs, read_variables, create_preference_matrix
+# TODO: S_08,T_02,Yes - S_21,T_02,No - S_08,S_21,Yes werkt nog niet
 
-# Student-student constraints have a yes AND a no
-
-# Teacher-student constraints have a yes AND a no
-
-# Student-student hava a yes but student1-teacher student2-teacher are different
-# Student-student have a no but student1-teacher student2-teacher are the same
-
-# student-student have a yes but student-1 teacher is yes and student2-teacher is no
-
-# Two student-teacher pairs cannot be not together
-# A student has both a "Yes" and a "No" to the same teacher
-
-
-# def validate_teachers(info_teachers, constraints_teachers, current_groups):
-def validate_teachers(data):
-    teachers = data.info_teachers['Teacher'].tolist()
+def validate_teachers(data, teachers):
     teachers_in_constraints = set(data.constraints_teachers['Teacher'])
-    teachers_in_groups = set(data.current_groups['Teacher'])
-
-    all_teachers = teachers_in_constraints | teachers_in_groups
-    invalid_teachers = [t for t in all_teachers if t not in teachers]
-
+    invalid_teachers = [t for t in teachers_in_constraints if t not in teachers]
     return invalid_teachers
 
+def validate_students(data, students):
+    students_in_constraints = set(data.constraints_students['Student 1']).union(set(data.constraints_students['Student 2']))
+    invalid_students = [s for s in students_in_constraints if s not in students]
+    return invalid_students
 
-def validate_constraint_consistency(data):
-    is_valid = True
+# TODO dit werkt geloof ik nog niet
+def validate_student_preference(data, variables, students):
+    preference_matrix = create_preference_matrix(data, variables)
 
-    # 1. Check if student pairs have a yes and a no
-    pair_map = data.constraints_students.groupby(data.constraints_students[['Student 1', 'Student 2']].apply(lambda x: tuple(sorted(x)), axis=1))['Together'].nunique()
-    conflicts = pair_map[pair_map > 1]
-    if not conflicts.empty:
-        print(f' Conflicting student pair constraints found: {conflicts}')
-        is_valid = False
+    for student in students:
+        preferences = preference_matrix.loc[student]
+        preferences = preferences[preferences == 1].index.tolist()
 
-    # 2. Check if student teacher pairs have a yes and a no
-    pair_map = data.constraints_teachers.groupby(data.constraints_teachers[['Student', 'Teacher']].apply(lambda x: tuple(sorted(x)), axis=1))['Together'].nunique()
-    conflicts = pair_map[pair_map > 1]
-    if not conflicts.empty:
-        print(f'Conflicting student-teacher constraints found: {conflicts}')
-        is_valid = False
+        if len(preferences) != len(set(preferences)):
+            print(f"Error: {student} has duplicate preferences.")
+            return False
+        if student in preferences:
+            print(f"Error: {student} has themselves as a preference.")
+            return False
+    return True
 
-    # 3. Check if there are students assigned to multiple teachers
+
+def build_together_groups(data):
+    graph = defaultdict(set)
+
+    # Filter to only "Yes"
+    for _, row in data.constraints_students[data.constraints_students["Together"] == "Yes"].iterrows():
+        a, b = row["Student 1"], row["Student 2"]
+        graph[a].add(b)
+        graph[b].add(a)
+
+    visited, groups = set(), []
+    for student in graph:
+        if student in visited:
+            continue
+        queue = deque([student])
+        group = set()
+        while queue:
+            curr = queue.popleft()
+            if curr in visited:
+                continue
+            visited.add(curr)
+            group.add(curr)
+            queue.extend(graph[curr] - visited)
+        groups.append(group)
+
+    return groups
+
+
+
+def check_conflicting_constraints(data, groups):
+    conflicts = []
+    for _, (s1, s2, together) in data.constraints_students.iterrows():
+        teacher1 = data.constraints_teachers[(data.constraints_teachers['Student'] == s1)]
+        teacher2 = data.constraints_teachers[(data.constraints_teachers['Student'] == s2)]
+
+        if together == "Yes":
+            conflict1 = data.constraints_students[
+                ((data.constraints_students['Student 1'] == s1) & (data.constraints_students['Student 2'] == s2) & (data.constraints_students['Together'] == "No"))]
+            conflict2 = data.constraints_students[
+                ((data.constraints_students['Student 1'] == s2) & (data.constraints_students['Student 2'] == s1) & (data.constraints_students['Together'] == "No"))]
+
+            # Check if there isnt another constraint with No for same students
+            if not conflict1.empty or not conflict2.empty:
+                conflicts.append((s1, s2, "Duplicate constraints"))
+
+            # Check if there is a conflict with the teacher
+            if not teacher1.empty and not teacher2.empty:
+                if teacher1['Teacher'].values[0] != teacher2['Teacher'].values[0] and teacher1['Together'].values[0] == 'Yes' and teacher2['Together'].values[0] == 'Yes':
+                    conflicts.append((s1, s2, "Conflicting teachers"))
+
+                if teacher1['Teacher'].values[0] == teacher2['Teacher'].values[0] and teacher1['Together'].values[0] != teacher2['Together'].values[0]:
+                    conflicts.append((s1, s2, "Conflicting teachers"))
+
+        elif together == "No":
+            conflict1 = data.constraints_students[
+                ((data.constraints_students['Student 1'] == s1) & (data.constraints_students['Student 2'] == s2) & (data.constraints_students['Together'] == "Yes"))]
+            conflict2 = data.constraints_students[
+                ((data.constraints_students['Student 1'] == s2) & (data.constraints_students['Student 2'] == s1) & (data.constraints_students['Together'] == "Yes"))]
+
+            # Check if there is another constraint with Yes for same students
+            if not conflict1.empty or not conflict2.empty:
+                conflicts.append((s1, s2, "Duplicate constraints"))
+
+    all_required_pairs = {}
+    for idx, group in enumerate(groups):
+        pairs = list(itertools.combinations(group, 2))
+        all_required_pairs[f"Group_{idx + 1}"] = pairs
+
+    no_constraints = set(
+        tuple(sorted((row['Student 1'], row['Student 2'])))
+        for _, row in data.constraints_students.iterrows()
+        if row['Together'] == 'No'
+    )
+
+    # Check if all pairs in a group have the same teacher
+    for group in all_required_pairs.values():
+        for (s1, s2) in group:
+            if tuple(sorted((s1, s2))) in no_constraints:
+                conflicts.append((s1, s2, "Conflicting constraints: transitivity"))
+
+            teacher1 = data.constraints_teachers[(data.constraints_teachers['Student'] == s1)]
+            teacher2 = data.constraints_teachers[(data.constraints_teachers['Student'] == s2)]
+
+            if not teacher1.empty and not teacher2.empty:
+                if teacher1['Together'].values[0] != teacher2['Together'].values[0]:
+                    conflicts.append((s1, s2, "Conflicting teachers"))
+
+    if conflicts:
+        print(f"Conflicting constraints found: {conflicts}")
+        return False
+    return True
+
+def validate_constraints(data, variables):
+    groups = build_together_groups(data)
+
+    for group in groups:
+        # 1. Check if a group has more students than the allowed max group size
+        if len(group) > variables.max_group_size:
+            print(f"Error: Due to the required constraints, a group contains more than the maximum allowed group size ({variables.max_group_size}).")
+            return False
+
+        # 2. Check if a group has more extra care students than the allowed max extra care students
+        extra_care_count = sum([data.info_students.loc[data.info_students['Student'] == student, 'Extra Care'].values[0] == "Yes" for student in group])
+        if extra_care_count > variables.max_extra_care:
+            print(f"Error: Due to the required constraints, a group contains more than the maximum allowed extra care students ({variables.max_extra_care_students}).")
+            return False
+
+    # Check if there are conflicting constraints
+    if not check_conflicting_constraints(data, groups):
+        return False
+
+    # Check if a student is assigned to multiple teachers
     student_teacher_yes = data.constraints_teachers[data.constraints_teachers['Together'].str.lower() == 'yes']
     teacher_counts = student_teacher_yes.groupby('Student')['Teacher'].nunique()
     multi_teacher_students = teacher_counts[teacher_counts > 1]
 
     if not multi_teacher_students.empty:
         print(f'Students assigned to multiple teachers: {multi_teacher_students}')
-        is_valid = False
+        return False
 
-    # 4. Check for student pair and teacher assignment conflicts
-    teacher_map = student_teacher_yes.groupby('Student')['Teacher'].apply(set).to_dict()
-    for _, (s1, s2, together) in data.constraints_students.iterrows():
-        t1, t2 = teacher_map.get(s1, set()), teacher_map.get(s2, set())
+    # Check if a student has both a "Yes" and a "No" to the same teacher
+    pair_map = data.constraints_teachers.groupby(data.constraints_teachers[['Student', 'Teacher']].apply(lambda x: tuple(sorted(x)), axis=1))['Together'].nunique()
+    conflicts = pair_map[pair_map > 1]
+    if not conflicts.empty:
+        print(f'Conflicting student-teacher constraints found: {conflicts}')
+        return False
 
-        if together == 'Yes' and t1 and t2 and t1 != t2:
-            print(f"{s1} and {s2} must be together but have different teachers: {t1} vs {t2}")
-            is_valid = False
-
-    # TODO: Check overige conflicten
-    # S1, S2, Yes but S1, T1, Yes and S2, T2, No doesnt work
-    # Student pair must be together (Yes) But one has "Yes" to a teacher and the other has "No" to that teacher.
-    # S_08,T_02,Yes - S_21,T_02,No - S_08,S_21,Yes
-    # EN A must be with B - B must be with C - A must not be with C
-
-    return is_valid
-
+    return True
 
 
 def validate_grouping_data(school, processed_data_folder):
-    # TODO: add validation if constraints are in conflict with each other
-
     data = read_dfs(school, processed_data_folder)
     variables = read_variables(data)
+
+    students = data.info_students['Student'].tolist()
+    teachers = data.info_teachers['Teacher'].tolist()
 
     n_extra_care = len(data.info_students[data.info_students['Extra Care'] == 'Yes'])
 
@@ -101,9 +191,15 @@ def validate_grouping_data(school, processed_data_folder):
         return False
 
     # Check if all appearances of teachers are in the info_teachers df
-    invalid_teachers = validate_teachers(data)
+    invalid_teachers = validate_teachers(data, teachers)
     if invalid_teachers != []:
-        print(f"Warning: The following teachers appear in constraints or groups but not in info_teachers: {invalid_teachers}")
+        print(f"Warning: The following teachers appear in constraints but not in info_teachers: {invalid_teachers}")
+        return False
+
+    # Check if all appearances of students are in the info_students df
+    invalid_students = validate_students(data, students)
+    if invalid_students != []:
+        print(f"Warning: The following students appear in constraints but not in info_students: {invalid_students}")
         return False
 
     # Check if maximum extra care * number of groups is not less than number of students with extra care
@@ -113,11 +209,12 @@ def validate_grouping_data(school, processed_data_folder):
               f"You need to increase the maximum number of extra care students per group or increase the number of groups.")
         return False
 
-    # Check constraint consistency
-    invalid_constraints = validate_constraint_consistency(data)
-    if invalid_constraints == False:
-        print("Error: Constraints are inconsistent.")
+    # Check student preferences
+    if not validate_student_preference(data, variables, students):
         return False
 
+    # Check constraint consistency
+    if not validate_constraints(data, variables):
+        return False
 
     return True
