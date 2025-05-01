@@ -1,5 +1,6 @@
 from code.baseline_random import run_random_baseline
-from code.MILP2 import run_milp
+# from code.MILP2 import run_milp
+from code.MILP_callback import run_milp
 from code.CP import run_cp
 
 import sys

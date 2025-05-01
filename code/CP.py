@@ -150,22 +150,6 @@ def create_model(school, processed_data_folder):
     return model, x, y, y_group
 
 
-# ## Logs new best solutions in terminal
-# class ObjectiveLogger(cp_model.CpSolverSolutionCallback):
-#     def __init__(self):
-#         super().__init__()
-#         self.start_time = time.time()
-#         self.best_objective = None
-#         self.solution_count = 0
-
-#     def on_solution_callback(self):
-#         self.solution_count += 1
-#         current_objective = self.ObjectiveValue()
-#         elapsed = time.time() - self.start_time
-
-#         if (self.best_objective is None) or (current_objective > self.best_objective):
-#             self.best_objective = current_objective
-#             print(f"[{elapsed:.1f}s] New best solution #{self.solution_count}, objective = {current_objective}")
 
 
 class ObjectiveLogger(cp_model.CpSolverSolutionCallback):
@@ -217,7 +201,7 @@ class ObjectiveLogger(cp_model.CpSolverSolutionCallback):
 def solve_model(model, x, y, y_group, results_folder, timestamp):
     # Create a solver and solve
     solver = cp_model.CpSolver()
-    solver.parameters.max_time_in_seconds = 30
+    solver.parameters.max_time_in_seconds = 5 * 60
 
     # Set up and attach the logger callback
     logger = ObjectiveLogger(results_folder, timestamp)
@@ -237,9 +221,6 @@ def save_solution(solution, results_folder, timestamp):
 
     df = pd.DataFrame(assignments, columns=['Student', 'Teacher'])
     df = df.sort_values(by='Teacher')
-
-    if not os.path.exists(results_folder):
-        os.makedirs(results_folder, exist_ok=True)
 
     file_path = os.path.join(results_folder, f"CP_{timestamp}.csv")
     df.to_csv(file_path, index=False)

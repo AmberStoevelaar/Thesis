@@ -3,6 +3,9 @@ import numpy as np
 import pandas as pd
 import time
 import csv
+import os
+import math
+from datetime import datetime
 from help_functions import create_preference_matrix, read_dfs, read_variables
 
 def create_variables(students, teachers):
@@ -93,8 +96,8 @@ def add_balancing_constraints(ILO, x, students, teachers, data, attribute, devia
 
     for t in teachers:
         for cat in categories:
-            lower_bound = (1 - deviation) * target_per_teacher[cat]
-            upper_bound = (1 + deviation) * target_per_teacher[cat]
+            lower_bound = math.floor((1 - deviation) * target_per_teacher[cat])
+            upper_bound = math.ceil((1 + deviation) * target_per_teacher[cat])
             students_in_cat = category_students[cat]
 
             ILO += pulp.lpSum(x[s][t] for s in students_in_cat) >= lower_bound, f"{attribute}_{cat}_{t}_min"
