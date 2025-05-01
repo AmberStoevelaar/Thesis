@@ -6,6 +6,3 @@ __pycache__
 
 # Everything from data folder
 data/*
-
-# Everything from results folder
-results/*
