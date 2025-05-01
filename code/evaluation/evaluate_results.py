@@ -50,9 +50,9 @@ def get_satisfied_preferences_per_student(df):
     return preferences
 
 def get_average_preferences(df):
-    total_preferences = get_total_preferences_satisfied(df)
+    total_preferences_satisfied = get_total_preferences_satisfied(df)
     total_students = len(df)
-    average_preferences = total_preferences / total_students
+    average_preferences = total_preferences_satisfied / total_students
     return average_preferences
 
 def get_total_preferences_provided(df):
@@ -100,51 +100,27 @@ def get_minimum_preferences_satisfied(df):
     return min_satisfied if min_satisfied != float('inf') else 0
 
 
-# def evaluate_accuracy_from_csv(assigned_groups, preferences_df):
-#     total_points = 0
-#     student_groups = assigned_groups.set_index('ID')['Assigned_Group'].to_dict()
+def evaluate_accuracy_from_csv(df):
+    score = get_total_preferences_satisfied(df)
 
-#     for _, row in preferences_df.iterrows():
-#         student_id = row['ID']
-#         preferences = row[['Preference_1', 'Preference_2', 'Preference_3', 'Preference_4', 'Preference_5']].dropna().tolist()
+    # Optimal score is the total number of preferences provided?
+    optimal_score = get_total_preferences_provided(merged)
 
-#         assigned_group = student_groups.get(student_id)
+    print(f"Score: {score}")
+    print(f"Optimal score: {optimal_score}")
 
-#         student_score = 0
-#         for i, preferred_student in enumerate(preferences):
-#             if preferred_student in student_groups and student_groups[preferred_student] == assigned_group:
-#                 student_score += (5 - i)
-
-#         total_points += student_score
-
-#     optimal_score = calculate_optimal_score(preferences_df)
-
-#     if optimal_score == 0:
-#         relative_excess = 0
-#     else:
-#         relative_excess = (optimal_score - total_points) / optimal_score * 100
-
-#     absolute_difference = optimal_score - total_points
-#     return total_points, optimal_score, relative_excess, absolute_difference
-
-
-# # Evaluate the accuracy
-# total_points, optimal_score, relative_excess, absolute_difference = evaluate_accuracy_from_csv(assigned_groups, preferences)
-
-# print("Total Points:", total_points)
-# print("Optimal Score:", optimal_score)
-# print("Absolute Difference:", absolute_difference)
-# print("Relative Excess (%):", relative_excess)
-
+    relative_excess = (optimal_score - score) / optimal_score * 100
+    absolute_difference = abs(optimal_score - score)
+    return relative_excess, absolute_difference
 
 
 def run_evaluation(merged, data, variables):
-    # pass
     # CHECK CONSTRAINTS
     # Check if all groups satisfy the constraints
     groups = data.info_teachers['Teacher'].tolist()
     if run_check_constraints(groups, merged, data, variables):
         print("All constraints are satisfied.")
+
 
     # SOLUTION QUALITY
     # Total preferences satisfied
@@ -164,30 +140,24 @@ def run_evaluation(merged, data, variables):
     print(f"Minimum preferences satisfied: {min_preferences}")
 
 
-
-
     # EXTRA SOLUTION QUALITY
     # Optimal solution (number of preferences provided by students) / or optimal solution?
     n_provided_preferences = get_total_preferences_provided(merged)
     print(f"Total preferences provided by all students: {n_provided_preferences}")
 
     # Absolute difference between preferences satisfied and preferences given
-
     # Relative excess of preferences satisfied
-
-    # --- fixed cost?
-
-
-
-
+    relative_excess, absolute_difference = evaluate_accuracy_from_csv(merged)
+    print(f"Relative excess: {relative_excess:.2f}%")
+    print(f"Absolute difference: {absolute_difference}")
 
 
 if __name__ == "__main__":
     results_folder = "data/results/"
     # school = "school_1"
     # filename = "CP_20250429_121259.csv"
-    school = "school_2"
-    filename = "CP_20250429_121212.csv"
+    school = "school_4"
+    filename = "CP_20250501_141524.csv"
     processed_data_folder = "data/processed_data/"
 
     # Read in all necessary files
@@ -199,7 +169,8 @@ if __name__ == "__main__":
     merged = pd.merge(groups, data.info_students, on='Student', how='left')
     merged.rename(columns={'Teacher': 'Assigned Group'}, inplace=True)
 
-    show_counts(merged)
+    # show_counts(merged)
+    # get_satisfied_preferences_per_student(merged)
     run_evaluation(merged, data, variables)
 
 

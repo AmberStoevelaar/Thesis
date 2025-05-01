@@ -1,6 +1,8 @@
 from ortools.sat.python import cp_model
 import math
 import os
+import csv
+import time
 from datetime import datetime
 import pandas as pd
 from help_functions import create_preference_matrix, read_dfs, read_variables
@@ -148,48 +150,116 @@ def create_model(school, processed_data_folder):
     return model, x, y, y_group
 
 
+# ## Logs new best solutions in terminal
+# class ObjectiveLogger(cp_model.CpSolverSolutionCallback):
+#     def __init__(self):
+#         super().__init__()
+#         self.start_time = time.time()
+#         self.best_objective = None
+#         self.solution_count = 0
 
-def solve_model(model, x, y, y_group):
+#     def on_solution_callback(self):
+#         self.solution_count += 1
+#         current_objective = self.ObjectiveValue()
+#         elapsed = time.time() - self.start_time
+
+#         if (self.best_objective is None) or (current_objective > self.best_objective):
+#             self.best_objective = current_objective
+#             print(f"[{elapsed:.1f}s] New best solution #{self.solution_count}, objective = {current_objective}")
+
+
+class ObjectiveLogger(cp_model.CpSolverSolutionCallback):
+    def __init__(self, results_folder, timestamp):
+        super().__init__()
+        self.start_time = time.time()
+        self.best_objective = None
+        self.solution_count = 0
+        self.timestamp = timestamp
+
+        # Create a subfolder for logs
+        log_folder = os.path.join(results_folder, "logs")
+        os.makedirs(log_folder, exist_ok=True)
+        self.results_folder = log_folder
+
+        # Set up the CSV file with a timestamp-based filename
+        self.file_path = os.path.join(self.results_folder, f"CP_{self.timestamp}.csv")
+
+        # Open the CSV file and write headers if it doesn't exist
+        with open(self.file_path, mode='w', newline='') as file:
+            writer = csv.writer(file)
+            writer.writerow(["Timestamp", "Solution #", "Elapsed Time (s)", "Objective Value"])
+
+    def on_solution_callback(self):
+        self.solution_count += 1
+        current_objective = self.ObjectiveValue()
+        elapsed = time.time() - self.start_time
+
+        # Log every new best solution
+        if (self.best_objective is None) or (current_objective > self.best_objective):
+            self.best_objective = current_objective
+            print(f"[{elapsed:.1f}s] New best solution #{self.solution_count}, objective = {current_objective}")
+            self.save_to_csv(elapsed, current_objective, self.timestamp)
+
+    def save_to_csv(self, elapsed, current_objective, timestamp):
+        with open(self.file_path, mode='a', newline='') as file:
+            writer = csv.writer(file)
+            writer.writerow([timestamp, self.solution_count, round(elapsed, 3), current_objective])
+
+    def EndSearch(self):
+        if self.best_objective is not None:
+            elapsed = time.time() - self.start_time
+            print(f"[{elapsed:.1f}s] Search ended. Best solution #{self.solution_count}, objective = {self.best_objective}")
+            self.save_to_csv(elapsed, self.best_objective, self.timestamp)
+
+
+
+
+def solve_model(model, x, y, y_group, results_folder, timestamp):
     # Create a solver and solve
     solver = cp_model.CpSolver()
-    status = solver.Solve(model)
+    solver.parameters.max_time_in_seconds = 30
 
-    print(f"Status: {solver.StatusName(status)}")
+    # Set up and attach the logger callback
+    logger = ObjectiveLogger(results_folder, timestamp)
+    status = solver.SolveWithSolutionCallback(model, logger)
+    logger.EndSearch()
+
+    print(f"Final status: {solver.StatusName(status)}")
+    print(f"Final objective reported by solver: {solver.ObjectiveValue()}")
 
     if status in (cp_model.FEASIBLE, cp_model.OPTIMAL):
-        # print(f"x={solver.Value(x)}, y={solver.Value(y)}, y_group={solver.Value(y_group)}")
-        print(f'solution: {solver.ObjectiveValue()}')
-        # print(f'x={solver.Value(x)}')
-        # print({key: solver.Value(var) for key, var in x.items()})
         solution = {key: solver.Value(var) for key, var in x.items()}
-
         return solution
 
 
-def save_solution(solution, school):
-    assignments = [
-        (student, teacher)
-        for (student, teacher), assigned in solution.items()
-        if assigned == 1
-    ]
+def save_solution(solution, results_folder, timestamp):
+    assignments = [(student, teacher) for (student, teacher), assigned in solution.items() if assigned == 1]
 
     df = pd.DataFrame(assignments, columns=['Student', 'Teacher'])
     df = df.sort_values(by='Teacher')
 
-    results_data_folder='data/results'
-    base_name = 'CP'
-    results_folder = os.path.join(results_data_folder, school)
     if not os.path.exists(results_folder):
         os.makedirs(results_folder, exist_ok=True)
 
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    file_path = os.path.join(results_folder, f"{base_name}_{timestamp}.csv")
+    file_path = os.path.join(results_folder, f"CP_{timestamp}.csv")
     df.to_csv(file_path, index=False)
 
 
 def run_cp(school, processed_data_folder):
     model, x, y, y_group = create_model(school, processed_data_folder)
-    solution = solve_model(model, x, y, y_group)
-    save_solution(solution, school)
+
+    folder ='data/results'
+    timestamp = datetime.now().strftime("%d-%m_%H:%M")
+    results_folder = os.path.join(folder, school)
+
+
+    solution = solve_model(model, x, y, y_group, results_folder, timestamp)
+    if solution:
+        print("Solution found!")
+        # print(solution)
+    else:
+        print("No solution found.")
+
+    save_solution(solution, results_folder, timestamp)
 
 

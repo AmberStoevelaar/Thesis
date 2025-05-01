@@ -15,17 +15,15 @@ def run_pipeline():
     # Run ILP algorithm
     if run_baseline_ilp:
         run_milp(school, processed_data_folder)
-        # run_milp()
 
     # Run CP algorithm
     if run_cp_model:
         run_cp(school, processed_data_folder)
-        # run_cp()
 
 
 if __name__ == "__main__":
     if len(sys.argv) < 3:
-        print("Usage: python script.py <school> <method: cp|milp|random> [random_seed]")
+        print("Usage: python3 main.py <school> <method: cp|milp|random> [random_seed]")
         sys.exit(1)
 
     school = sys.argv[1]

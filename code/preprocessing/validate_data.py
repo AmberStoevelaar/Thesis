@@ -7,7 +7,6 @@ import itertools
 # Add the project root to sys.path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
 from help_functions import read_dfs, read_variables, create_preference_matrix
-# TODO: S_08,T_02,Yes - S_21,T_02,No - S_08,S_21,Yes werkt nog niet
 
 def validate_teachers(data, teachers):
     teachers_in_constraints = set(data.constraints_teachers['Teacher'])
