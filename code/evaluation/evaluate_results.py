@@ -156,8 +156,8 @@ if __name__ == "__main__":
     results_folder = "data/results/"
     # school = "school_1"
     # filename = "CP_20250429_121259.csv"
-    school = "school_4"
-    filename = "CP_20250501_141524.csv"
+    school = "school_1"
+    filename = "ILP_02-05_09:48.csv"
     processed_data_folder = "data/processed_data/"
 
     # Read in all necessary files

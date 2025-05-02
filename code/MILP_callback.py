@@ -1,5 +1,6 @@
 from pyscipopt import Model
 from pyscipopt import quicksum
+from pyscipopt import Eventhdlr, SCIP_EVENTTYPE
 import numpy as np
 import pandas as pd
 import time
@@ -25,17 +26,16 @@ def create_variables(model, students, teachers):
             if s1 != s2:
                 y[s1, s2] = model.addVar(vtype="BINARY", name=f"y_{s1}_{s2}")
                 for t in teachers:
-                    if s1 != s2:
                         y_group[s1, s2, t] = model.addVar(vtype="BINARY", name=f"y_group_{s1}_{s2}_{t}")
 
     return model, x, y, y_group
 
 
-def add_preference_objective(model, y, students, preference_matrix, min_weight=1.0, total_weight=1.0):
+def add_preference_objective(model, y, students, preference_matrix):
     satisfied = {}
     min_satisfied = model.addVar(vtype="INTEGER", name="min_satisfied")
 
-    total_expr = 0  # sum of individual satisfaction scores
+    total_expr = 0
 
     for s1 in students:
         expr = quicksum(
@@ -46,28 +46,20 @@ def add_preference_objective(model, y, students, preference_matrix, min_weight=1
         model.addCons(expr >= min_satisfied, name=f"min_satisfied_{s1}")
         total_expr += expr
 
-    # Return components, but don’t set the objective here
-    return satisfied, min_satisfied, total_expr
+    return min_satisfied, total_expr
 
 
 def create_initial_model(students, teachers, data, preferences):
     model = Model("milp")
-
     model, x, y, y_group = create_variables(model, students, teachers)
 
-    # Add preference objective (rewrite this function too)
-    # satisfied, min_satisfied, prefs_obj, min_prefs_obj = add_preference_objective(model, y, students, preferences)
-    # Preference objective
-
-    satisfied, min_satisfied, total_expr = add_preference_objective(model, y, students, preferences)
+    min_satisfied, total_expr = add_preference_objective(model, y, students, preferences)
 
     # Define weights
     min_weight = 1.0
     total_weight = 1.0
 
-    # Set the total objective (PySCIPOpt uses standard math ops)
     total_objective = total_weight * total_expr + min_weight * min_satisfied
-    # total_objective = prefs_obj + min_prefs_obj
     model.setObjective(total_objective, sense="maximize")
 
     return model, x, y, y_group
@@ -188,13 +180,13 @@ def create_model(school, processed_data_folder):
 
     preference_matrix = create_preference_matrix(data, variables)
 
-    # x, y, y_group = create_variables(model, students, teachers)
     model, x, y, y_group = create_initial_model(students, teachers, data, preference_matrix)
 
     # Hard constraints
     model = add_hard_constraints(model, x, y, y_group, students, teachers, data, variables)
     model = add_assignment_constraints(model, x, y, data)
 
+    # Balancing constraints
     model = add_balancing_constraints(model, x, students, teachers, data, attribute='Gender', deviation=0.1)
     model = add_balancing_constraints(model, x, students, teachers, data, attribute='Grade', deviation=0.1)
     model = add_balancing_constraints(model, x, students, teachers, data, attribute='Extra Care', deviation=0.1)
@@ -241,14 +233,16 @@ class MILPObjectiveLogger:
             writer = csv.writer(file)
             writer.writerow([timestamp, self.solution_count, round(elapsed, 3), current_objective])
 
-    def end_search(self, model):
+    def end_search(self, status_str):
         elapsed = time.time() - self.start_time
         if self.best_objective is not None:
             print(f"[{elapsed:.1f}s] Search ended. Best solution #{self.solution_count}, objective = {self.best_objective}")
             self.save_to_csv(elapsed, self.best_objective)
 
-
-from pyscipopt import Eventhdlr, SCIP_EVENTTYPE
+            # Write final status to logging
+            with open(self.log_file_path, mode='a', newline='') as file:
+                writer = csv.writer(file)
+                writer.writerow(["Status", status_str])
 
 class BestSolutionLogger(Eventhdlr):
     def __init__(self, logger):
@@ -265,24 +259,7 @@ class BestSolutionLogger(Eventhdlr):
         self.logger.log_solution(self.model)
         return {"result": None}
 
-
-# def solve_model(model, results_folder, timestamp, timelimit=30):
-#     logger = MILPObjectiveLogger(results_folder, timestamp)
-#     model.setParam("limits/time", timelimit)
-
-#     # Enable solution callback
-#     def solution_callback(scip_model):
-#         logger.log_solution(scip_model)
-#         return {"result": None}
-
-#     model.optimize()
-#     logger.end_search(model)
-
-#     status_str = model.getStatus()
-#     best_objective = model.getObjVal() if status_str in ["optimal", "bestsol"] else None
-#     return best_objective, status_str
-
-def solve_model(model, results_folder, timestamp, timelimit=60):
+def solve_model(model, results_folder, timestamp, timelimit):
     logger = MILPObjectiveLogger(results_folder, timestamp)
     model.setParam("limits/time", timelimit)
 
@@ -293,67 +270,36 @@ def solve_model(model, results_folder, timestamp, timelimit=60):
     model.optimize()
 
     # Final log at the end
-    logger.end_search(model)
+    logger.end_search(status_str=model.getStatus())
 
     status_str = model.getStatus()
     if model.getNSols() > 0:
         best_objective = model.getObjVal()
     else:
         best_objective = None
-    # best_objective = model.getObjVal() if status_str in ["optimal", "bestsol"] else None
     return best_objective, status_str
-
-
-
-# def save_solution(model, x, results_folder, timestamp, best_objective, start_time):
-#     elapsed_time = time.time() - start_time
-
-#     # Save summary result
-#     results_file = os.path.join(results_folder, f"ILP_{timestamp}.csv")
-#     with open(results_file, mode='w', newline='') as file:
-#         writer = csv.writer(file)
-#         writer.writerow(["Student", "Teacher"])
-
-#         # Iterate over all student-teacher pairs and save the assignments
-#         for s in x:  # x is a dictionary of (student, teacher) pairs
-#             for t in x[s]:  # Iterate over teachers for each student
-#                 # Check if the student is assigned to the teacher
-#                 if model.getVal(x[s, t]) > 0.5:  # If the value is close to 1, we consider it as assigned
-#                     writer.writerow([s, t])
-#         # for s in x:
-#         #     for t in x[s]:
-#         #         val = model.getVal(x[s,t])
-#         #         if round(val) == 1:
-#         #             writer.writerow([s, t])
-
-#     print(f"Results saved to: {results_file}")
-#     print(f"Final objective value: {best_objective}, Time taken: {elapsed_time:.2f} seconds")
-
 
 def save_solution(model, x, results_folder, timestamp, best_objective, start_time):
     elapsed_time = time.time() - start_time
-    output_file = os.path.join(results_folder, f"solution_{timestamp}.csv")
+    output_file = os.path.join(results_folder, f"ILP_{timestamp}.csv")
 
-    with open(output_file, mode='w', newline='') as file:
-        writer = csv.writer(file)
-        writer.writerow(["Student", "Teacher"])
+    assignments = []
+    for (s, t), var in x.items():
+        val = model.getVal(var)
+        print(f"Variable: {var.name}, Value: {val}")
+        if val > 0.5:
+            assignments.append((s, t))
 
-        for (s, t), var in x.items():
-            val = model.getVal(var)
-            print(f"Variable: {var.name}, Value: {val}")
-            if val > 0.5:
-                writer.writerow([s, t])
+    df = pd.DataFrame(assignments, columns=["Student", "Teacher"])
+    df = df.sort_values(by="Teacher")
+    df.to_csv(output_file, index=False)
 
     print(f"Solution saved to: {output_file}")
     print(f"Final objective value: {best_objective}, Time taken: {elapsed_time:.2f} seconds")
 
 
-
-
-
-def run_milp(school, processed_data_folder):
+def run_milp(school, processed_data_folder, timelimit):
     # Create model
-    # model = create_model(school, processed_data_folder)
     model, x, y, y_group = create_model(school, processed_data_folder)
 
     # Define paths
@@ -363,7 +309,7 @@ def run_milp(school, processed_data_folder):
 
     # Solve model
     start_time = time.time()
-    best_objective, status_str = solve_model(model, os.path.join(results_folder, school), timestamp)
+    best_objective, status_str = solve_model(model, os.path.join(results_folder, school), timestamp, timelimit)
 
     # Save solution
     save_solution(model, x, os.path.join(results_folder, school), timestamp, best_objective, start_time)

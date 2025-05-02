@@ -189,24 +189,28 @@ class ObjectiveLogger(cp_model.CpSolverSolutionCallback):
             writer = csv.writer(file)
             writer.writerow([timestamp, self.solution_count, round(elapsed, 3), current_objective])
 
-    def EndSearch(self):
+    def EndSearch(self, status_str):
         if self.best_objective is not None:
             elapsed = time.time() - self.start_time
             print(f"[{elapsed:.1f}s] Search ended. Best solution #{self.solution_count}, objective = {self.best_objective}")
             self.save_to_csv(elapsed, self.best_objective, self.timestamp)
 
+            with open(self.file_path, mode='a', newline='') as file:
+                writer = csv.writer(file)
+                writer.writerow(["Status", status_str])
 
 
 
-def solve_model(model, x, y, y_group, results_folder, timestamp):
+
+def solve_model(model, x, y, y_group, results_folder, timestamp, timelimit):
     # Create a solver and solve
     solver = cp_model.CpSolver()
-    solver.parameters.max_time_in_seconds = 5 * 60
+    solver.parameters.max_time_in_seconds = timelimit
 
     # Set up and attach the logger callback
     logger = ObjectiveLogger(results_folder, timestamp)
     status = solver.SolveWithSolutionCallback(model, logger)
-    logger.EndSearch()
+    logger.EndSearch(solver.StatusName(status))
 
     print(f"Final status: {solver.StatusName(status)}")
     print(f"Final objective reported by solver: {solver.ObjectiveValue()}")
@@ -226,7 +230,7 @@ def save_solution(solution, results_folder, timestamp):
     df.to_csv(file_path, index=False)
 
 
-def run_cp(school, processed_data_folder):
+def run_cp(school, processed_data_folder, timelimit):
     model, x, y, y_group = create_model(school, processed_data_folder)
 
     folder ='data/results'
@@ -234,10 +238,9 @@ def run_cp(school, processed_data_folder):
     results_folder = os.path.join(folder, school)
 
 
-    solution = solve_model(model, x, y, y_group, results_folder, timestamp)
+    solution = solve_model(model, x, y, y_group, results_folder, timestamp, timelimit)
     if solution:
         print("Solution found!")
-        # print(solution)
     else:
         print("No solution found.")
 
