@@ -20,5 +20,15 @@ To preprocess the data, follow these steps:
    - `<method>`: The optimization method to use (e.g. `cp`, `milp`, `random`)
    - `[random_seed]`: Optional random seed for reproducibility (default is 42)
 
+### Running evaluation
+1. Open the `code/evaluation/evaluate_results.py` file
+2. Make sure the paths to the processed data and results are correct
+   - `processed_data_path = "data/processed_data"`
+   - `results_path = "data/results"
+3. For now, change school name and results file path to what you want to evaluate
+4. Run `python3 code/evaluation/evaluate_results.py` to evaluate the results
 
+### Running tests
+
+1. `python3 scripts/run_batch.py`
 

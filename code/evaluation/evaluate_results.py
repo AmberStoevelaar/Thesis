@@ -154,11 +154,12 @@ def run_evaluation(merged, data, variables):
 
 if __name__ == "__main__":
     results_folder = "data/results/"
+    processed_data_folder = "data/processed_data/"
+
     # school = "school_1"
     # filename = "CP_20250429_121259.csv"
     school = "school_1"
     filename = "ILP_02-05_09:48.csv"
-    processed_data_folder = "data/processed_data/"
 
     # Read in all necessary files
     data = read_dfs(school, processed_data_folder)
