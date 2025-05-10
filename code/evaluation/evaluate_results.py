@@ -158,8 +158,8 @@ if __name__ == "__main__":
 
     # school = "school_1"
     # filename = "CP_20250429_121259.csv"
-    school = "school_1"
-    filename = "ILP_02-05_09:48.csv"
+    school = "school_5"
+    filename = "ILP_02-05_11:04.csv"
 
     # Read in all necessary files
     data = read_dfs(school, processed_data_folder)
