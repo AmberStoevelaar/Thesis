@@ -88,18 +88,20 @@ def add_hard_constraints(model, x, students, teachers, data, variables, preferen
         model.addCons(quicksum(x[s1, t] for t in teachers) == 1, name=f"Student_{s1}_assigned_once")
 
         # Add fairness constraint
-        preferred_students = [s2 for s2 in students if s1 != s2 and preferences.loc[s1, s2] == 1]
-        if preferred_students:
-            together_vars = []
+        if min_prefs_per_kid > 0:
+            preferred_students = [s2 for s2 in students if s1 != s2 and preferences.loc[s1, s2] == 1]
+            if preferred_students:
+                together_vars = []
 
-            for s2 in preferred_students:
-                together = model.addVar(vtype="BINARY", name=f"together_{s1}_{s2}")
-                model.addCons(together <= quicksum(x[s1, t] * x[s2, t] for t in teachers))
-                model.addCons(together >= quicksum(x[s1, t] + x[s2, t] - 1 for t in teachers))
-                together_vars.append(together)
+                for s2 in preferred_students:
+                    # Add the constraint: together = 1 if both students are assigned to the same teacher
+                    together = model.addVar(vtype="BINARY", name=f"together_{s1}_{s2}")
+                    model.addCons(together <= quicksum(x[s1, t] * x[s2, t] for t in teachers))
+                    model.addCons(together >= quicksum(x[s1, t] + x[s2, t] - 1 for t in teachers))
+                    together_vars.append(together)
 
-            # Require that at least one preference is satisfied
-            model.addCons(quicksum(together_vars) >= min_prefs_per_kid, name=f"{s1}_at_least_one_pref")
+                # Require that at least min preferences are satisfied
+                model.addCons(quicksum(together_vars) >= min_prefs_per_kid, name=f"{s1}_at_least_one_pref")
 
     for t in teachers:
         # Group size constraints

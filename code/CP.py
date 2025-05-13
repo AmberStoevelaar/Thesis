@@ -10,8 +10,6 @@ from help_functions import create_preference_matrix, read_dfs, read_variables
 
 def add_objective(model, x, students, teachers, data, variables):
     preferences = create_preference_matrix(data, variables)
-    print("Preferences matrix:")
-    print(preferences)
     objectives = []
 
     # Maximize student preferences
@@ -24,8 +22,6 @@ def add_objective(model, x, students, teachers, data, variables):
                     model.AddBoolAnd([x[s1, t], x[s2, t]]).OnlyEnforceIf(both_assigned)
                     model.AddBoolOr([x[s1, t].Not(), x[s2, t].Not()]).OnlyEnforceIf(both_assigned.Not())
                     objectives.append(both_assigned)
-
-    # TODO: add fairness objective
 
     # Add the objective to the model
     model.Maximize(sum(objectives))
@@ -52,10 +48,28 @@ def add_balance_constraints(model, attribute, deviation, x, teachers, data):
 
     return model
 
-def add_hard_constraints(model, x, students, teachers, data, variables):
+def add_hard_constraints(model, x, students, teachers, data, variables, preferences, min_prefs_per_kid):
     for s1 in students:
         # Each student must be assigned to exactly one teacher
         model.AddExactlyOne(x[s1, t] for t in teachers)
+
+        # Add fairness constraint
+        if min_prefs_per_kid > 0:
+            preferred_students = [s2 for s2 in students if s1 != s2 and preferences.loc[s1, s2] == 1]
+            print(f"Student {s1} prefers: {preferred_students}")
+
+            if preferred_students:
+                together_vars = []
+
+                for s2 in preferred_students:
+                    # Add the constraint: together = 1 if both students are assigned to the same teacher
+                    together = model.NewBoolVar(f"together_{s1}_{s2}")
+                    for t in teachers:
+                        model.AddImplication(x[s1, t], x[s2, t]).OnlyEnforceIf(together)
+                    together_vars.append(together)
+
+                # Require that at least min preferences are satisfied
+                model.Add(sum(together_vars) >= min_prefs_per_kid)
 
     # Assignment constraints
     for _, (s1, s2, together) in data.constraints_students.iterrows():
@@ -114,7 +128,7 @@ def create_initial_model(students, teachers, data, variables):
 
     return model, x
 
-def create_model(school, processed_data_folder):
+def create_model(school, processed_data_folder, min_prefs_per_kid):
     data = read_dfs(school, processed_data_folder)
     variables = read_variables(data)
 
@@ -125,7 +139,8 @@ def create_model(school, processed_data_folder):
     model, x = create_initial_model(students, teachers, data, variables)
 
     # Add hard constraints
-    model = add_hard_constraints(model, x, students, teachers, data, variables)
+    preference_matrix = create_preference_matrix(data, variables)
+    model = add_hard_constraints(model, x, students, teachers, data, variables, preference_matrix, min_prefs_per_kid)
 
     return model, x
 
@@ -186,6 +201,7 @@ def solve_model(model, x, results_folder, timestamp, timelimit):
     # Create a solver and solve
     solver = cp_model.CpSolver()
     solver.parameters.max_time_in_seconds = timelimit
+    solver.parameters.log_search_progress = True
 
     # Set up and attach the logger callback
     logger = ObjectiveLogger(results_folder, timestamp)
@@ -210,8 +226,8 @@ def save_solution(solution, results_folder, timestamp):
     df.to_csv(file_path, index=False)
 
 
-def run_cp(school, processed_data_folder, timelimit):
-    model, x, = create_model(school, processed_data_folder)
+def run_cp(school, processed_data_folder, timelimit, min_prefs_per_kid):
+    model, x, = create_model(school, processed_data_folder, min_prefs_per_kid)
 
     folder ='data/results'
     timestamp = datetime.now().strftime("%d-%m_%H:%M")

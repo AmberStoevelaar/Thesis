@@ -24,7 +24,7 @@ def run_pipeline(timelimit, min_prefs_per_kid):
 
 if __name__ == "__main__":
     if len(sys.argv) < 3:
-        print("Usage: python3 main.py <school> <method: cp|milp|random> [timelimit] [min_prefs_per_kid]")
+        print("Usage: python3 main.py <school> <method: cp|milp|random> [min_prefs_per_kid] [timelimit]")
         sys.exit(1)
 
     school = sys.argv[1]
@@ -36,11 +36,12 @@ if __name__ == "__main__":
     run_baseline_ilp = method == "milp"
     run_cp_model = method == "cp"
 
-    # Set time limit for the solver (default 10 minutes)
-    timelimit = int(sys.argv[3]) if len(sys.argv) > 3 else 10*60
-
     # Set minimum preferences per kid (default 1)
-    min_prefs_per_kid = int(sys.argv[4]) if len(sys.argv) > 4 else 1
+    min_prefs_per_kid = int(sys.argv[3]) if len(sys.argv) > 3 else 1
+
+    # Set time limit for the solver (default 10 minutes)
+    timelimit = int(sys.argv[4]) if len(sys.argv) > 4 else 10*60
+
 
     # Define paths
     processed_data_folder = 'data/processed_data'
