@@ -54,8 +54,6 @@ def create_initial_model(students, teachers, preferences):
 
 def add_assignment_constraints(model, x, data, teachers):
     for _, (s1, s2, together) in data.constraints_students.iterrows():
-        print(f"Adding constraint for students {s1} and {s2}: {together}")
-
         for t in teachers:
             if together == "Yes":
                 # Students must be together
@@ -65,8 +63,6 @@ def add_assignment_constraints(model, x, data, teachers):
                 model.addCons(x[s1, t] + x[s2, t] <= 1)
 
     for _, (s, t, together) in data.constraints_teachers.iterrows():
-        print(f"Adding constraint for student {s} and teacher {t}: {together}")
-
         if together == "Yes":
             # Student must be with the teacher
             model.addCons(x[s, t] == 1)
@@ -146,11 +142,6 @@ def add_balancing_constraints(model, x, students, teachers, data, attribute, dev
     return model
 
 
-
-
-
-
-
 def create_model(school, processed_data_folder, min_prefs_per_kid):
     # Read data
     data = read_dfs(school, processed_data_folder)
@@ -171,7 +162,12 @@ def create_model(school, processed_data_folder, min_prefs_per_kid):
     model = add_balancing_constraints(model, x, students, teachers, data, attribute='Gender', deviation=0.1)
     model = add_balancing_constraints(model, x, students, teachers, data, attribute='Grade', deviation=0.1)
     model = add_balancing_constraints(model, x, students, teachers, data, attribute='Extra Care', deviation=0.1)
-    # model = add_balancing_constraints(model, x, students, teachers, data, attribute='Behaviour', deviation=0.1)
+
+    # Add balance constraints for behavior if specified
+    if 'Behavior' in data.info_students.columns:
+        model = add_balancing_constraints(model, x, students, teachers, data, attribute='Behavior', deviation=0.1)
+    else:
+        print("No 'Behavior' attribute found in the data. Skipping balancing constraints for behavior.")
 
     return model, x
 

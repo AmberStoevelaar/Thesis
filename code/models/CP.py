@@ -37,7 +37,7 @@ def add_balance_constraints(model, attribute, deviation, x, teachers, data):
         for cat in categories:
             lower_bound = math.floor((1 - deviation) * target_per_teacher[cat])
             upper_bound = math.ceil((1 + deviation) * target_per_teacher[cat])
-            print(f"Adding balance constraints for {cat} in teacher {t}: [{lower_bound}, {upper_bound}]")
+            # print(f"Adding balance constraints for {cat} in teacher {t}: [{lower_bound}, {upper_bound}]")
 
             # Get the list of students in this category
             students_in_cat = category_students[cat]
@@ -56,7 +56,6 @@ def add_hard_constraints(model, x, students, teachers, data, variables, preferen
         # Add fairness constraint
         if min_prefs_per_kid > 0:
             preferred_students = [s2 for s2 in students if s1 != s2 and preferences.loc[s1, s2] == 1]
-            print(f"Student {s1} prefers: {preferred_students}")
 
             if preferred_students:
                 together_vars = []
@@ -73,8 +72,6 @@ def add_hard_constraints(model, x, students, teachers, data, variables, preferen
 
     # Assignment constraints
     for _, (s1, s2, together) in data.constraints_students.iterrows():
-        print(f"Adding constraint for students {s1} and {s2}: {together}")
-
         for t in teachers:
             if together == "Yes":
                 # Students must be together
@@ -84,8 +81,6 @@ def add_hard_constraints(model, x, students, teachers, data, variables, preferen
                 model.Add(x[s1, t] + x[s2, t] <= 1)
 
     for _, (s, t, together) in data.constraints_teachers.iterrows():
-        print(f"Adding constraint for student {s} and teacher {t}: {together}")
-
         if together == "Yes":
             # Student must be with the teacher
             model.Add(x[s, t] == 1)
@@ -101,15 +96,18 @@ def add_hard_constraints(model, x, students, teachers, data, variables, preferen
     # Maximum extra care constraints
     extra_care_values = dict(zip(data.info_students['Student'], data.info_students['Extra Care'].map({'Yes': 1, 'No': 0})))
     for t in teachers:
-        print(f"EXTRA CARE VALUES for teacher {t}:")
-        print(extra_care_values)
         model.Add(sum(x[s, t] * extra_care_values[s] for s in students) <= variables.max_extra_care)
 
     # Add balance constraints
     model = add_balance_constraints(model, 'Gender', 0.1, x, teachers, data)
     model = add_balance_constraints(model, 'Grade', 0.1, x, teachers, data)
     model = add_balance_constraints(model, 'Extra Care', 0.1, x, teachers, data)
-    # model = add_balance_constraints(model, 'Behaviour', 0.1, x, teachers, data)
+
+    # Add balance constraints for behavior if specified
+    if 'Behavior' in data.info_students.columns:
+        model = add_balance_constraints(model, 'Behavior', 0.1, x, teachers, data)
+    else:
+        print("No 'Behavior' attribute found in the data. Skipping balancing constraints for behavior.")
 
     return model
 

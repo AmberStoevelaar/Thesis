@@ -43,15 +43,23 @@ def read_data(excel_path):
 def translate_dfs(info_teachers, info_students, group_preferences, constraints_students, constraints_teachers, current_groups):
     # Translate the column names to English
     info_teachers.columns = ['Teacher']
-    info_students.columns = ['Student', 'Grade', 'Gender', 'Extra Care', 'Preference 1', 'Preference 2', 'Preference 3', 'Preference 4', 'Preference 5']
     group_preferences.columns = ['Number of Students', 'Number of Groups', 'Minimum Group Size', 'Maximum Number Extra Care']
     constraints_students.columns = ['Student 1', 'Student 2', 'Together']
     constraints_teachers.columns = ['Student', 'Teacher', 'Together']
     current_groups.columns = ['Student', 'Teacher']
 
+    # Only translate Behavior column if it exists
+    info_columns = ['Student', 'Grade', 'Gender', 'Extra Care', 'Preference 1', 'Preference 2', 'Preference 3', 'Preference 4', 'Preference 5']
+    if info_students.shape[1] == 10:
+        info_columns.append('Behavior')
+
+    info_students.columns = info_columns
+
     # Translate values in dataframes to English
     info_students['Gender'] = info_students['Gender'].replace({'Jongen': 'Boy', 'Meisje': 'Girl'})
     info_students['Extra Care'] = info_students['Extra Care'].replace({'Ja': 'Yes', 'Nee': 'No'})
+    if 'Behavior' in info_students.columns:
+        info_students['Behavior'] = info_students['Behavior'].replace({'Ja': 'Yes', 'Nee': 'No'})
 
     constraints_students['Together'] = constraints_students['Together'].replace({'Ja': 'Yes', 'Nee': 'No'})
     constraints_teachers['Together'] = constraints_teachers['Together'].replace({'Ja': 'Yes', 'Nee': 'No'})
@@ -64,49 +72,7 @@ def replace_values(df, column, mapping_dict):
     return df
 
 
-def anonymize_data(info_teachers, info_students, constraints_students, constraints_teachers, current_groups):
-    # Create new Dataframe with student names and assigned id
-    studentId = pd.DataFrame()
-    teacherId = pd.DataFrame()
-
-    studentId['Student'] = info_students['Student']
-    teacherId['Teacher'] = info_teachers['Teacher']
-
-    # Generate a unique ID for each student and teacher
-    studentId['ID'] = ['S_' + str(i).zfill(2) for i in range(1, len(studentId) + 1)]
-    teacherId['ID'] = ['T_' + str(i).zfill(2) for i in range(1, len(teacherId) + 1)]
-
-    # Create a dictionary to map student and teacher names to IDs
-    studentId_dict = dict(zip(studentId['Student'], studentId['ID']))
-    teacherId_dict = dict(zip(teacherId['Teacher'], teacherId['ID']))
-
-    # Replace teacher names with IDs in the info_teachers DataFrame
-    info_teachers = replace_values(info_teachers, 'Teacher', teacherId_dict)
-
-    # Replace student names with IDs in the info_students DataFrame
-    info_students = replace_values(info_students, 'Student', studentId_dict)
-    info_students = replace_values(info_students, 'Preference 1', studentId_dict)
-    info_students = replace_values(info_students, 'Preference 2', studentId_dict)
-    info_students = replace_values(info_students, 'Preference 3', studentId_dict)
-    info_students = replace_values(info_students, 'Preference 4', studentId_dict)
-    info_students = replace_values(info_students, 'Preference 5', studentId_dict)
-
-    # Replace student names with IDs in the constraints_students DataFrame
-    constraints_students = replace_values(constraints_students, 'Student 1', studentId_dict)
-    constraints_students = replace_values(constraints_students, 'Student 2', studentId_dict)
-
-    # Replace teacher names with IDs in the constraints_teachers DataFrame
-    constraints_teachers = replace_values(constraints_teachers, 'Student', studentId_dict)
-    constraints_teachers = replace_values(constraints_teachers, 'Teacher', teacherId_dict)
-
-    # Replace student and teacher names with IDs in the current_groups DataFrame
-    current_groups = replace_values(current_groups, 'Student', studentId_dict)
-    current_groups = replace_values(current_groups, 'Teacher', teacherId_dict)
-
-    return info_teachers, info_students, constraints_students, constraints_teachers, current_groups, studentId, teacherId
-
-
-def save_dataframes_to_csv(school, dfs, processed_data_folder, studentId, teacherId):
+def save_dataframes_to_csv(school, dfs, processed_data_folder):
     # Check if school folder exists
     school_processed_folder = os.path.join(processed_data_folder, school)
     os.makedirs(school_processed_folder, exist_ok=True)
@@ -115,11 +81,6 @@ def save_dataframes_to_csv(school, dfs, processed_data_folder, studentId, teache
     for df_name,df in dfs:
         file_path = os.path.join(school_processed_folder, f'{df_name}.csv')
         df.to_csv(file_path, index=False)
-
-    # Save mapping dictionaries as CSV
-    studentId.to_csv(os.path.join(school_processed_folder, 'studentIdMapping.csv'), index=False)
-    teacherId.to_csv(os.path.join(school_processed_folder, 'teacherIdMapping.csv'), index=False)
-
 
 
 def run_anonymize(school, raw_data_folder, processed_data_folder):
@@ -142,9 +103,6 @@ def run_anonymize(school, raw_data_folder, processed_data_folder):
     # Translate data
     info_teachers, info_students, group_preferences, constraints_students, constraints_teachers, current_groups = translate_dfs(info_teachers, info_students, group_preferences, constraints_students, constraints_teachers, current_groups)
 
-    # Anonymize data
-    info_teachers, info_students, constraints_students, constraints_teachers, current_groups, studentId, teacherId = anonymize_data(info_teachers, info_students, constraints_students, constraints_teachers, current_groups)
-
     # Save the processed data
     dfs = [
         ('info_teachers', info_teachers),
@@ -154,9 +112,6 @@ def run_anonymize(school, raw_data_folder, processed_data_folder):
         ('constraints_teachers', constraints_teachers),
         ('current_groups', current_groups)
     ]
-    save_dataframes_to_csv(school, dfs, processed_data_folder, studentId, teacherId)
+    save_dataframes_to_csv(school, dfs, processed_data_folder)
 
     print("Data anonymization for {} completed.".format(school))
-
-
-# TODO: aanpassen kolommen in vertaling naar goede hoeveelheid/nieuwe namen
