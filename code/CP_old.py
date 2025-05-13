@@ -8,26 +8,15 @@ import pandas as pd
 from help_functions import create_preference_matrix, read_dfs, read_variables
 
 
-def add_objective(model, x, students, teachers, data, variables):
+def add_objective(model, x, y, students, data, variables):
     preferences = create_preference_matrix(data, variables)
     objectives = []
 
     # Maximize student preferences
     for s1 in students:
         for s2 in students:
-            if s1 != s2 and preferences.loc[s1, s2] > 0:
-                for t in teachers:
-                    # Create a helper variable that is 1 if both students are assigned to teacher t
-                    both_assigned = model.NewBoolVar(f"same_{s1}_{s2}_{t}")
-                    model.AddBoolAnd([x[s1, t], x[s2, t]]).OnlyEnforceIf(both_assigned)
-                    model.AddBoolOr([x[s1, t].Not(), x[s2, t].Not()]).OnlyEnforceIf(both_assigned.Not())
-                    objectives.append(both_assigned)
-
-    # # Maximize student preferences
-    # for s1 in students:
-    #     for s2 in students:
-    #         if s1 != s2:
-    #             objectives.append(preferences.loc[s1, s2] * y[s1, s2])
+            if s1 != s2:
+                objectives.append(preferences.loc[s1, s2] * y[s1, s2])
 
     # TODO: add fairness objective
 
@@ -56,10 +45,24 @@ def add_balance_constraints(model, attribute, deviation, x, teachers, data):
 
     return model
 
-def add_hard_constraints(model, x, students, teachers, data, variables):
+def add_hard_constraints(model, x, y, y_group, students, teachers, data, variables):
     for s1 in students:
         # Each student must be assigned to exactly one teacher
+        # model.Add(sum(x[s1, t] for t in teachers) == 1)
         model.AddExactlyOne(x[s1, t] for t in teachers)
+
+        for s2 in students:
+            if s1 != s2:
+                # Link y with y_group
+                model.AddMaxEquality(y[s1, s2], [y_group[s1, s2, t] for t in teachers])
+                # model.Add(y[s1, s2] == sum(y_group[s1, s2, t] for t in teachers))
+
+                for t in teachers:
+                    # Set y_group if both students are assigned to the same teacher
+                    model.AddBoolAnd([x[s1, t], x[s2, t]]).OnlyEnforceIf(y_group[s1, s2, t])
+                    model.AddBoolOr([x[s1, t].Not(), x[s2, t].Not()]).OnlyEnforceIf(y_group[s1, s2, t].Not())
+
+
 
     # Assignment constraints
     for _, (s1, s2, together) in data.constraints_students.iterrows():
@@ -110,9 +113,26 @@ def create_initial_model(students, teachers, data, variables):
         for t in teachers:
             x[s, t] = model.NewBoolVar(f'x_{s}_{t}')
 
-    model = add_objective(model, x, students, teachers, data, variables)
+    # y[s1][s2] = 1 if students s1 and s2 are together
+    y = {}
+    for s1 in students:
+        for s2 in students:
+            if s1 != s2:
+                y[s1, s2] = model.NewBoolVar(f'y_{s1}_{s2}')
+            else:
+                y[s1, s2] = 0
 
-    return model, x
+    # y_group[s1][s2][t] = 1 if students s1 and s2 are together with teacher t
+    y_group = {}
+    for s1 in students:
+        for s2 in students:
+            if s1 != s2:
+                for t in teachers:
+                    y_group[s1, s2, t] = model.NewBoolVar(f'y_{s1}_{s2}_{t}')
+
+    model = add_objective(model, x, y, students, data, variables)
+
+    return model, x, y, y_group
 
 def create_model(school, processed_data_folder):
     data = read_dfs(school, processed_data_folder)
@@ -122,12 +142,12 @@ def create_model(school, processed_data_folder):
     teachers = data.info_teachers['Teacher'].tolist()
 
     # Initialize model
-    model, x = create_initial_model(students, teachers, data, variables)
+    model, x, y, y_group = create_initial_model(students, teachers, data, variables)
 
     # Add hard constraints
-    model = add_hard_constraints(model, x, students, teachers, data, variables)
+    model = add_hard_constraints(model, x, y, y_group, students, teachers, data, variables)
 
-    return model, x
+    return model, x, y, y_group
 
 
 
@@ -182,7 +202,7 @@ class ObjectiveLogger(cp_model.CpSolverSolutionCallback):
 
 
 
-def solve_model(model, x, results_folder, timestamp, timelimit):
+def solve_model(model, x, y, y_group, results_folder, timestamp, timelimit):
     # Create a solver and solve
     solver = cp_model.CpSolver()
     solver.parameters.max_time_in_seconds = timelimit
@@ -211,14 +231,14 @@ def save_solution(solution, results_folder, timestamp):
 
 
 def run_cp(school, processed_data_folder, timelimit):
-    model, x, = create_model(school, processed_data_folder)
+    model, x, y, y_group = create_model(school, processed_data_folder)
 
     folder ='data/results'
     timestamp = datetime.now().strftime("%d-%m_%H:%M")
     results_folder = os.path.join(folder, school)
 
 
-    solution = solve_model(model, x, results_folder, timestamp, timelimit)
+    solution = solve_model(model, x, y, y_group, results_folder, timestamp, timelimit)
     if solution:
         print("Solution found!")
     else:

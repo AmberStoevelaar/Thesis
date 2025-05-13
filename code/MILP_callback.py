@@ -20,60 +20,34 @@ def create_variables(model, students, teachers):
 
     return model, x
 
-
-# def add_preference_objective(model, students, preference_matrix):
-#     satisfied = {}
-#     min_satisfied = model.addVar(vtype="INTEGER", name="min_satisfied")
-
-#     total_expr = 0
-
-#     for s1 in students:
-#         expr = quicksum(
-#             y[s1, s2] for s2 in students
-#             if s2 != s1 and preference_matrix.loc[s1, s2] == 1
-#         )
-#         satisfied[s1] = expr
-#         model.addCons(expr >= min_satisfied, name=f"min_satisfied_{s1}")
-#         total_expr += expr
-
-#     return min_satisfied, total_expr
-
-
 def add_preference_objective(model, students, teachers, x, preference_matrix):
-    satisfied = {}
-    min_satisfied = model.addVar(vtype="INTEGER", name="min_satisfied")
-
-    total_expr = 0
+    # Total prefs is the sum of all satisfied preferences and is used in the objective to maximize
+    total_prefs = 0
     for s1 in students:
-        expr = 0
+        # Count the number of satisfied preferences for each student
+        prefs = 0
         for s2 in students:
             if s1 != s2 and preference_matrix.loc[s1, s2] == 1:
-                # Create an auxiliary variable to capture if s1 and s2 are together
+                # Create a variable to capture if s1 and s2 are together
                 together = model.addVar(vtype="BINARY", name=f"pref_{s1}_{s2}")
-                model.addCons(together <= quicksum(x[s1, t] * x[s2, t] for t in teachers),
-                    name=f"pref_upper_{s1}_{s2}")
-                model.addCons(together >= quicksum(x[s1, t] + x[s2, t] - 1 for t in teachers),
-                    name=f"pref_lower_{s1}_{s2}")
-                expr += together
-        satisfied[s1] = expr
-        model.addCons(expr >= min_satisfied, name=f"min_satisfied_{s1}")
-        total_expr += expr
+                model.addCons(together <= quicksum(x[s1, t] * x[s2, t] for t in teachers))
+                model.addCons(together >= quicksum(x[s1, t] + x[s2, t] - 1 for t in teachers))
 
-    return min_satisfied, total_expr
+                # If they are together, add to the preference count
+                prefs += together
+
+        # Add the preference count to the total prefs
+        total_prefs += prefs
+
+    return total_prefs
 
 
 def create_initial_model(students, teachers, preferences):
     model = Model("milp")
     model, x = create_variables(model, students, teachers)
 
-    min_satisfied, total_expr = add_preference_objective(model, students, teachers, x, preferences)
-
-    # Define weights
-    min_weight = 1.0
-    total_weight = 1.0
-
-    total_objective = total_weight * total_expr + min_weight * min_satisfied
-    model.setObjective(total_objective, sense="maximize")
+    total_prefs = add_preference_objective(model, students, teachers, x, preferences)
+    model.setObjective(total_prefs, sense="maximize")
 
     return model, x
 
@@ -102,8 +76,7 @@ def add_assignment_constraints(model, x, data, teachers):
 
     return model
 
-
-def add_hard_constraints(model, x, students, teachers, data, variables):
+def add_hard_constraints(model, x, students, teachers, data, variables, preferences, min_prefs_per_kid):
     # Mapping "Extra Care" to values
     extra_care_values = dict(zip(
         data.info_students['Student'],
@@ -113,6 +86,20 @@ def add_hard_constraints(model, x, students, teachers, data, variables):
     for s1 in students:
         # Each student is assigned to exactly one teacher
         model.addCons(quicksum(x[s1, t] for t in teachers) == 1, name=f"Student_{s1}_assigned_once")
+
+        # Add fairness constraint
+        preferred_students = [s2 for s2 in students if s1 != s2 and preferences.loc[s1, s2] == 1]
+        if preferred_students:
+            together_vars = []
+
+            for s2 in preferred_students:
+                together = model.addVar(vtype="BINARY", name=f"together_{s1}_{s2}")
+                model.addCons(together <= quicksum(x[s1, t] * x[s2, t] for t in teachers))
+                model.addCons(together >= quicksum(x[s1, t] + x[s2, t] - 1 for t in teachers))
+                together_vars.append(together)
+
+            # Require that at least one preference is satisfied
+            model.addCons(quicksum(together_vars) >= min_prefs_per_kid, name=f"{s1}_at_least_one_pref")
 
     for t in teachers:
         # Group size constraints
@@ -162,7 +149,7 @@ def add_balancing_constraints(model, x, students, teachers, data, attribute, dev
 
 
 
-def create_model(school, processed_data_folder):
+def create_model(school, processed_data_folder, min_prefs_per_kid):
     # Read data
     data = read_dfs(school, processed_data_folder)
     variables = read_variables(data)
@@ -175,13 +162,14 @@ def create_model(school, processed_data_folder):
     model, x = create_initial_model(students, teachers, preference_matrix)
 
     # Hard constraints
-    model = add_hard_constraints(model, x, students, teachers, data, variables)
+    model = add_hard_constraints(model, x, students, teachers, data, variables, preference_matrix, min_prefs_per_kid)
     model = add_assignment_constraints(model, x, data, teachers)
 
     # Balancing constraints
     model = add_balancing_constraints(model, x, students, teachers, data, attribute='Gender', deviation=0.1)
     model = add_balancing_constraints(model, x, students, teachers, data, attribute='Grade', deviation=0.1)
     model = add_balancing_constraints(model, x, students, teachers, data, attribute='Extra Care', deviation=0.1)
+    # model = add_balancing_constraints(model, x, students, teachers, data, attribute='Behaviour', deviation=0.1)
 
     return model, x
 
@@ -210,7 +198,15 @@ class MILPObjectiveLogger:
             writer.writerow(["Timestamp", "Solution #", "Elapsed Time (s)", "Objective Value"])
 
     def log_solution(self, model):
-        current_objective = model.getObjVal()
+        if model.getNSols() == 0:
+            return  # No solution to log
+
+        try:
+            current_objective = model.getSolObjVal(model.getBestSol())
+        except Exception as e:
+            print(f"Warning: Unable to retrieve objective value: {e}")
+            return
+
         elapsed = time.time() - self.start_time
         self.solution_count += 1
 
@@ -290,10 +286,9 @@ def save_solution(model, x, results_folder, timestamp, best_objective, start_tim
     print(f"Final objective value: {best_objective}, Time taken: {elapsed_time:.2f} seconds")
 
 
-def run_milp(school, processed_data_folder, timelimit):
+def run_milp(school, processed_data_folder, timelimit, min_prefs_per_kid):
     # Create model
-    model, x = create_model(school, processed_data_folder)
-
+    model, x = create_model(school, processed_data_folder, min_prefs_per_kid)
     # Define paths
     results_folder = 'data/results'
     timestamp = datetime.now().strftime("%d-%m_%H:%M")
