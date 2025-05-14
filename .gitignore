@@ -6,3 +6,6 @@ __pycache__
 
 # Everything from data folder
 data/*
+
+# Scripts
+scripts/*

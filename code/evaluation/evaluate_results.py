@@ -158,8 +158,10 @@ if __name__ == "__main__":
 
     # school = "school_1"
     # filename = "CP_20250429_121259.csv"
-    school = "school_5"
-    filename = "ILP_02-05_11:04.csv"
+    school = "vorige"
+    # filename = "ILP_13-05_10:58.csv"
+    # filename= "CP_13-05_13:53.csv"
+    filename = "vorige.csv"
 
     # Read in all necessary files
     data = read_dfs(school, processed_data_folder)
@@ -171,7 +173,7 @@ if __name__ == "__main__":
     merged.rename(columns={'Teacher': 'Assigned Group'}, inplace=True)
 
     # show_counts(merged)
-    # get_satisfied_preferences_per_student(merged)
+    get_satisfied_preferences_per_student(merged)
     run_evaluation(merged, data, variables)
 
 
