@@ -178,21 +178,29 @@ def create_model(school, processed_data_folder, min_prefs_per_kid):
 
 
 class ILPObjectiveLogger:
-    def __init__(self, results_folder, timestamp):
+    def __init__(self, results_folder, timestamp, timelimit, min_prefs_per_kid):
         self.start_time = time.time()
         self.best_objective = None
         self.solution_count = 0
         self.results_folder = results_folder
         self.timestamp = timestamp
+        self.school =  os.path.basename(os.path.dirname(results_folder))
 
         # Setup paths
         log_folder = os.path.join(results_folder, "logs")
         os.makedirs(log_folder, exist_ok=True)
         self.log_file_path = os.path.join(log_folder, f"ILP_{self.timestamp}.csv")
 
-        # Write header
+        # Open the CSV file and write headers if it doesn't exist
         with open(self.log_file_path, mode='w', newline='') as file:
             writer = csv.writer(file)
+            # Add metadata to the CSV file
+            writer.writerow(["Run Config"])
+            writer.writerow(["School", self.school])
+            writer.writerow(["Method", "CP"])
+            writer.writerow(["Min Prefs Per Kid", min_prefs_per_kid])
+            writer.writerow(["Time Limit (s)", timelimit])
+            writer.writerow([])
             writer.writerow(["Timestamp", "Solution #", "Elapsed Time (s)", "Objective Value"])
 
     def log_solution(self, model):
@@ -245,8 +253,8 @@ class BestSolutionLogger(Eventhdlr):
         self.logger.log_solution(self.model)
         return {"result": None}
 
-def solve_model(model, results_folder, timestamp, timelimit):
-    logger = ILPObjectiveLogger(results_folder, timestamp)
+def solve_model(model, results_folder, timestamp, timelimit, min_prefs_per_kid):
+    logger = ILPObjectiveLogger(results_folder, timestamp, timelimit, min_prefs_per_kid)
     model.setParam("limits/time", timelimit)
 
     # Register solution logger event handler
@@ -295,7 +303,7 @@ def run_ilp(school, processed_data_folder, timelimit, min_prefs_per_kid):
 
     # Solve model
     start_time = time.time()
-    best_objective, status_str = solve_model(model, os.path.join(results_folder), timestamp, timelimit)
+    best_objective, status_str = solve_model(model, os.path.join(results_folder), timestamp, timelimit, min_prefs_per_kid)
 
     # Save solution
     save_solution(model, x, os.path.join(results_folder), timestamp, best_objective, start_time)

@@ -146,12 +146,13 @@ def create_model(school, processed_data_folder, min_prefs_per_kid):
 
 
 class ObjectiveLogger(cp_model.CpSolverSolutionCallback):
-    def __init__(self, results_folder, timestamp):
+    def __init__(self, results_folder, timestamp, timelimit, min_prefs_per_kid):
         super().__init__()
         self.start_time = time.time()
         self.best_objective = None
         self.solution_count = 0
         self.timestamp = timestamp
+        self.school =  os.path.basename(os.path.dirname(results_folder))
 
         # Create a subfolder for logs
         log_folder = os.path.join(results_folder, "logs")
@@ -164,6 +165,13 @@ class ObjectiveLogger(cp_model.CpSolverSolutionCallback):
         # Open the CSV file and write headers if it doesn't exist
         with open(self.file_path, mode='w', newline='') as file:
             writer = csv.writer(file)
+            # Add metadata to the CSV file
+            writer.writerow(["Run Config"])
+            writer.writerow(["School", self.school])
+            writer.writerow(["Method", "CP"])
+            writer.writerow(["Min Prefs Per Kid", min_prefs_per_kid])
+            writer.writerow(["Time Limit (s)", timelimit])
+            writer.writerow([])
             writer.writerow(["Timestamp", "Solution #", "Elapsed Time (s)", "Objective Value"])
 
     def on_solution_callback(self):
@@ -195,14 +203,14 @@ class ObjectiveLogger(cp_model.CpSolverSolutionCallback):
 
 
 
-def solve_model(model, x, results_folder, timestamp, timelimit):
+def solve_model(model, x, results_folder, timestamp, timelimit, min_prefs_per_kid):
     # Create a solver and solve
     solver = cp_model.CpSolver()
     solver.parameters.max_time_in_seconds = timelimit
     solver.parameters.log_search_progress = True
 
     # Set up and attach the logger callback
-    logger = ObjectiveLogger(results_folder, timestamp)
+    logger = ObjectiveLogger(results_folder, timestamp, timelimit, min_prefs_per_kid)
     status = solver.SolveWithSolutionCallback(model, logger)
     logger.EndSearch(solver.StatusName(status))
 
@@ -232,7 +240,7 @@ def run_cp(school, processed_data_folder, timelimit, min_prefs_per_kid):
     results_folder = os.path.join(folder, school, "CP")
 
 
-    solution = solve_model(model, x, results_folder, timestamp, timelimit)
+    solution = solve_model(model, x, results_folder, timestamp, timelimit, min_prefs_per_kid)
     if solution:
         print("Solution found!")
     else:

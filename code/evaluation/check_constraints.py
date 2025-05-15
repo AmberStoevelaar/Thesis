@@ -1,25 +1,19 @@
 import math
 
-def violates_min_group_size(group, df, min_group_size):
-    # Check if the group size is less than the minimum group size
-    count = df[df["Assigned Group"] == group].shape[0]
-    if count < min_group_size:
-        return True
-    return False
+from helpers import get_minimum_preferences_satisfied, get_satisfied_preferences_per_student
 
-def violates_max_group_size(group, df, max_group_size):
-    count = df[df["Assigned Group"] == group].shape[0]
-    if count > max_group_size:
-        return True
-    return False
+# 1. Each student should be assigned to exactly one group.
+def violates_unique_teacher_assignment(df):
+    return df['Student'].duplicated().any()
 
-def violates_max_extra_care(group, df, max_extra_care):
-    # Check if the group size is greater than the maximum extra care size
-    count = df[(df["Assigned Group"] == group) & (df["Extra Care"] == "Yes")].shape[0]
-    if count > max_extra_care:
-        return True
-    return False
+# 2. Each group should have between min_group_size and max_group_size students.
+def violates_max_group_size(group, groups, max_group_size):
+    return len(groups[group]) >= max_group_size
 
+def violates_min_group_size(group, groups, min_group_size):
+    return len(groups[group]) < min_group_size
+
+# 3. Pairing constraints for students and teacher
 def violates_student_pair(group, df, constraints_students):
     students = df[df['Assigned Group'] == group]['Student'].tolist()
     violations = []
@@ -29,8 +23,6 @@ def violates_student_pair(group, df, constraints_students):
 
         s1_in_group = s1 in students
         s2_in_group = s2 in students
-        # print(f"Checking constraint for students {s1} and {s2}: {together} in group {group}")
-        # print(f"Student {s1} in group: {s1_in_group}, Student {s2} in group: {s2_in_group}")
 
         if together == 'Yes':
             # Inclusion constraint: both should be in the same group
@@ -51,8 +43,6 @@ def violates_teacher_pair(group, df, constraints_teachers):
         student, teacher, together = row['Student'], row['Teacher'], row['Together']
 
         student_in_group = student in students
-        # teacher_in_group = teacher in df[df['Assigned Group'] == group]['Teacher'].tolist()
-        # Check if teacher is the group
         teacher_in_group = group == teacher
 
         if together == 'Yes':
@@ -66,7 +56,15 @@ def violates_teacher_pair(group, df, constraints_teachers):
 
     return violations
 
-def violates_ratio(group, df, attribute, deviation, variables):
+# 4. Each group should have a maximum number of students with extra care or any other binary attribute.
+def violates_max_extra_care(group, df, max_extra_care):
+    return df[(df["Assigned Group"] == group) & (df["Extra Care"] == "Yes")].shape[0] > max_extra_care
+
+# def violates_max_binary(group, df, column, max_allowed):
+#     return df[(df["Assigned Group"] == group) & (df[column] == "Yes")].shape[0] > max_allowed
+
+# 5. Each group should have a balanced ratio of students based on certain attributes.
+def violates_ratio(group, df, attribute, variables, deviation=0.1):
     categories = df[attribute].unique()
     category_counts = df[attribute].value_counts().to_dict()
     target_per_group = {cat: category_counts[cat] / variables.n_groups for cat in categories}
@@ -85,44 +83,70 @@ def violates_ratio(group, df, attribute, deviation, variables):
 
     return False
 
+# 6. Check if all students have at least min_preferences satisfied if they provided as much.
+def violates_min_prefs(df, min_prefs):
+    min_satisfied = get_minimum_preferences_satisfied(df)
+    return min_satisfied < min_prefs
 
 
 
-def run_check_constraints(groups, merged, data, variables):
+# Returns True if the constraints are satisfied, False otherwise
+def run_check_constraints(groups, merged, data, variables, min_prefs=1, deviation=0.1):
+    # 1. Check if all students are assigned to exactly one group
+    if violates_unique_teacher_assignment(merged):
+        print("Some students are assigned to multiple groups.")
+        return False
+
+    # 6. Check if all students have at least min_preferences satisfied
+    if violates_min_prefs(merged, min_prefs):
+        print(f"Some students have less than {min_prefs} preferences satisfied.")
+        return False
+
     for group in groups:
-        # Check if the group size is less than the minimum group size
+        # 2. Check if group size is within the allowed range
         if violates_min_group_size(group, merged, variables.min_group_size):
             print(f"Group {group} violates minimum group size with size {len(merged[merged['Assigned Group'] == group])}.")
             return False
 
-        # Check if the group size is greater than the maximum group size
         if violates_max_group_size(group, merged, variables.max_group_size):
             print(f"Group {group} violates maximum group size with size {len(merged[merged['Assigned Group'] == group])}.")
             return False
 
-        # Check if there are invalid students paired in group
+        # 3. Check if there are invalid pairings of students and teachers
         student_pair_violations = violates_student_pair(group, merged, data.constraints_students)
         if student_pair_violations:
             for s1, s2, reason in student_pair_violations:
                 print(f"Student {s1} and {s2} violate the constraint: {reason}.")
             return False
 
-        # Check if there are invalid students paired with teacher in group
         teacher_pair_violations = violates_teacher_pair(group, merged, data.constraints_teachers)
         if teacher_pair_violations:
             for s, t, reason in teacher_pair_violations:
                 print(f"Student {s} and teacher {t} violate the constraint: {reason}.")
             return False
 
-        # Check if gender ratio is violated
-        if violates_ratio(group, merged, "Gender", 0.1, variables):
+        # 4. Check if group has too many students with extra care
+        if violates_max_extra_care(group, merged, variables.max_extra_care):
+            print(f"Group {group} violates maximum extra care constraint.")
+            return False
+
+        # 5. Check if groups are balanced within a certain ratio
+        if violates_ratio(group, merged, "Gender", variables, deviation):
             print(f"Group {group} violates Gender ratio.")
             return False
 
-        # Check if grade ratio is violated
-        if violates_ratio(group, merged, "Grade", 0.1, variables):
+        if violates_ratio(group, merged, "Grade", variables, deviation):
             print(f"Group {group} violates Grade ratio.")
             return False
 
+        if violates_ratio(group, merged, "Extra Care", variables, deviation):
+            print(f"Group {group} violates Extra Care ratio.")
+            return False
+
+        # Optionally check behavior if attribute is present
+        if "Behavior" in merged.columns:
+            if violates_ratio(group, merged, "Behavior", 0.1, variables):
+                print(f"Group {group} violates Behavior ratio.")
+                return False
 
     return True

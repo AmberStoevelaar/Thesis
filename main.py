@@ -6,13 +6,11 @@ from code.models.greedy import run_greedy
 
 import sys
 
-
-def run_pipeline(timelimit, min_prefs_per_kid):
+def run_pipeline():
     print("Running pipeline for school: {}".format(school))
 
     # Run random grouping algorithm
     if run_baseline_greedy:
-        # run_random_baseline(school, processed_data_folder)
         run_greedy(school, processed_data_folder)
 
     # Run ILP algorithm
@@ -49,6 +47,6 @@ if __name__ == "__main__":
     processed_data_folder = 'data/processed_data'
 
     # Run pipeline
-    run_pipeline(timelimit, min_prefs_per_kid)
+    run_pipeline()
 
 

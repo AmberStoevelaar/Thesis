@@ -24,11 +24,12 @@ To preprocess the data, follow these steps:
 1. Open the `code/evaluation/evaluate_results.py` file
 2. Make sure the paths to the processed data and results are correct
    - `processed_data_path = "data/processed_data"`
-   - `results_path = "data/results"
+   - `results_path = "data/results"`
 3. For now, change school name and results file path to what you want to evaluate
-4. Run `python3 code/evaluation/evaluate_results.py` to evaluate the results
+4. Run `python3 code/evaluation/evaluate_results.py <method: cp|ilp|greedy >` to evaluate the results
+   - `<method>`: The optimization method to evaluate (e.g. `cp`, `ilp`, `greedy`)
+5. Results will be saved in `data/results/<school>/<method>`
 
 ### Running tests
-
 1. `python3 scripts/run_batch.py`
 
