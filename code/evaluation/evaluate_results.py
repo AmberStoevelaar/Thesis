@@ -153,6 +153,14 @@ def run_evaluation(merged, data, variables):
 
 
 if __name__ == "__main__":
+    # Get method from command-line argument
+    if len(sys.argv) < 2:
+        print("Usage: python3 filename.py [ilp|cp|greedy]")
+        sys.exit(1)
+
+    method = sys.argv[1].lower()
+    method_folder = method.upper() if method in ["ilp", "cp"] else method.capitalize()
+
     results_folder = "data/results/"
     processed_data_folder = "data/processed_data/"
 
@@ -160,13 +168,13 @@ if __name__ == "__main__":
     # filename = "CP_20250429_121259.csv"
     school = "vorige"
     # filename = "ILP_13-05_10:58.csv"
-    # filename= "CP_13-05_13:53.csv"
-    filename = "vorige.csv"
+    filename= "Greedy_15-05_12:47.csv"
+    # filename = "vorige.csv"
 
     # Read in all necessary files
     data = read_dfs(school, processed_data_folder)
     variables = read_variables(data)
-    groups = pd.read_csv(os.path.join(results_folder, school, filename))
+    groups = pd.read_csv(os.path.join(results_folder, school, method_folder, filename))
 
     # Merge dataframes
     merged = pd.merge(groups, data.info_students, on='Student', how='left')

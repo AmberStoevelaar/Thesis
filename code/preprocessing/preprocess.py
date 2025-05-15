@@ -4,9 +4,9 @@ import warnings
 import shutil
 
 from validate_data import validate_grouping_data
+from help_functions import InputData, read_variables
 
 warnings.filterwarnings('ignore', category=UserWarning, message='.*Data Validation extension is not supported.*')
-
 
 def read_data(excel_path):
     # Define sheet names
@@ -68,32 +68,35 @@ def translate_dfs(info_teachers, info_students, group_preferences, constraints_s
 
     return info_teachers, info_students, group_preferences, constraints_students, constraints_teachers, current_groups
 
-# Function to replace all occurrences of a string in a DataFrame with the dictionary values
-def replace_values(df, column, mapping_dict):
-    df[column] = df[column].replace(mapping_dict)
+
+
+def strip_whitespace(df):
+    for col in df.columns:
+        if df[col].dtype == 'object':
+            df[col] = df[col].astype(str).str.strip()
     return df
 
-
-def save_dataframes_to_csv(school, dfs, processed_data_folder):
+def save_dataframes_to_csv(school, data, processed_data_folder):
     # Check if school folder exists
     school_processed_folder = os.path.join(processed_data_folder, school)
     os.makedirs(school_processed_folder, exist_ok=True)
 
-    # Save each dataframe as CSV
-    for df_name,df in dfs:
+    dfs = {
+        'group_preferences': data.group_preferences,
+        'info_students': data.info_students,
+        'info_teachers': data.info_teachers,
+        'constraints_students': data.constraints_students,
+        'constraints_teachers': data.constraints_teachers,
+        'current_groups': data.current_groups
+    }
+
+    # Save each dataframe to a CSV file
+    for df_name, df in dfs.items():
         file_path = os.path.join(school_processed_folder, f'{df_name}.csv')
         df.to_csv(file_path, index=False)
 
 
 def preprocess(school, raw_data_folder, processed_data_folder):
-    # Only run anonymization for school if it is not already processed
-    school_processed_folder = os.path.join(processed_data_folder, school)
-    if not os.path.exists(school_processed_folder):
-        os.makedirs(school_processed_folder, exist_ok=True)
-    else:
-        print("Data for {} already processed.".format(school))
-        return
-
     # Get file path
     school_path = os.path.join(raw_data_folder, school)
     excel_file = [f for f in os.listdir(school_path) if f.endswith('.xlsx')][0]
@@ -105,41 +108,52 @@ def preprocess(school, raw_data_folder, processed_data_folder):
     # Translate data
     info_teachers, info_students, group_preferences, constraints_students, constraints_teachers, current_groups = translate_dfs(info_teachers, info_students, group_preferences, constraints_students, constraints_teachers, current_groups)
 
+    # Strip whitespace from all dataframes
+    info_teachers = strip_whitespace(info_teachers)
+    info_students = strip_whitespace(info_students)
+    group_preferences = strip_whitespace(group_preferences)
+    constraints_students = strip_whitespace(constraints_students)
+    constraints_teachers = strip_whitespace(constraints_teachers)
+    current_groups = strip_whitespace(current_groups)
+
+    data = InputData(
+        group_preferences,
+        info_students,
+        info_teachers,
+        constraints_students,
+        constraints_teachers,
+        current_groups
+    )
+
+    variables = read_variables(data)
+
+    is_valid = validate_grouping_data(data, variables)
+    if is_valid == False:
+        exit("Grouping data for {} is invalid. Please check the errors above.".format(school))
+    else:
+        print("Grouping data for {} is valid.".format(school))
+
+
     # Save the processed data
-    dfs = [
-        ('info_teachers', info_teachers),
-        ('info_students', info_students),
-        ('group_preferences', group_preferences),
-        ('constraints_students', constraints_students),
-        ('constraints_teachers', constraints_teachers),
-        ('current_groups', current_groups)
-    ]
-    save_dataframes_to_csv(school, dfs, processed_data_folder)
-
-    print("Data anonymization for {} completed.".format(school))
-
+    save_dataframes_to_csv(school, data, processed_data_folder)
+    print("Data preprocessing for {} completed.".format(school))
 
 
 def run_preprocess(raw_data_folder, processed_data_folder):
     for school in os.listdir(raw_data_folder):
-        print("Running preprocessing for school: {}".format(school))
-
         if school == '.DS_Store' or school == 'school_1':
             print("Skipping file: {}".format(school))
             continue
 
+            # Only run preprocessing for school if it is not already processed
+        school_processed_folder = os.path.join(processed_data_folder, school)
+        if os.path.exists(school_processed_folder):
+            print("Data for {} already processed.".format(school))
+            continue
+
+        print("Running preprocessing for {}".format(school))
+
         preprocess(school, raw_data_folder, processed_data_folder)
-
-        # Validate grouping input data
-        is_valid = validate_grouping_data(school, processed_data_folder)
-        if is_valid == False:
-            school_processed_folder = os.path.join(processed_data_folder, school)
-            if os.path.exists(school_processed_folder):
-                shutil.rmtree(school_processed_folder)
-
-            exit("Grouping data is invalid. Please check the errors above.")
-        else:
-            print("Grouping data is valid.")
 
 
 if __name__ == "__main__":

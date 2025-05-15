@@ -164,18 +164,19 @@ def validate_constraints(data, variables):
     return True
 
 
-def validate_grouping_data(school, processed_data_folder):
-    data = read_dfs(school, processed_data_folder)
-    variables = read_variables(data)
+# def validate_grouping_data(school, processed_data_folder):
+def validate_grouping_data(dfs, variables):
+    # data = read_dfs(school, processed_data_folder)
+    # variables = read_variables(data)
 
-    students = data.info_students['Student'].tolist()
-    teachers = data.info_teachers['Teacher'].tolist()
+    students = dfs.info_students['Student'].tolist()
+    teachers = dfs.info_teachers['Teacher'].tolist()
 
-    n_extra_care = len(data.info_students[data.info_students['Extra Care'] == 'Yes'])
+    n_extra_care = len(dfs.info_students[dfs.info_students['Extra Care'] == 'Yes'])
 
     # Check if number of students is equal to the number of students in the info_students df
-    if variables.n_students != len(data.info_students):
-        print(f"Error: The number of students in the group preferences ({variables.n_students}) does not match the number of students in the info_students df ({len(data.info_students)}).")
+    if variables.n_students != len(dfs.info_students):
+        print(f"Error: The number of students in the group preferences ({variables.n_students}) does not match the number of students in the info_students df ({len(dfs.info_students)}).")
         return False
 
     # Check if minimum group size * number of groups does not exceed number of students
@@ -185,18 +186,18 @@ def validate_grouping_data(school, processed_data_folder):
         return False
 
     # Check if number of teachers is equal to the number of groups
-    if len(data.info_teachers) != variables.n_groups:
-        print(f"Error: The number of teachers ({len(data.info_teachers)}) does not match the number of groups ({variables.n_groups}).")
+    if len(dfs.info_teachers) != variables.n_groups:
+        print(f"Error: The number of teachers ({len(dfs.info_teachers)}) does not match the number of groups ({variables.n_groups}).")
         return False
 
     # Check if all appearances of teachers are in the info_teachers df
-    invalid_teachers = validate_teachers(data, teachers)
+    invalid_teachers = validate_teachers(dfs, teachers)
     if invalid_teachers != []:
         print(f"Warning: The following teachers appear in constraints but not in info_teachers: {invalid_teachers}")
         return False
 
     # Check if all appearances of students are in the info_students df
-    invalid_students = validate_students(data, students)
+    invalid_students = validate_students(dfs, students)
     if invalid_students != []:
         print(f"Warning: The following students appear in constraints but not in info_students: {invalid_students}")
         return False
@@ -209,11 +210,11 @@ def validate_grouping_data(school, processed_data_folder):
         return False
 
     # Check student preferences
-    if not validate_student_preference(data, variables, students):
+    if not validate_student_preference(dfs, variables, students):
         return False
 
     # Check constraint consistency
-    if not validate_constraints(data, variables):
+    if not validate_constraints(dfs, variables):
         return False
 
     return True
