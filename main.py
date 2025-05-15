@@ -1,6 +1,7 @@
 from code.models.baseline_random import run_random_baseline
 from code.models.MILP_callback import run_milp
 from code.models.CP import run_cp
+from code.models.heuristic import run_greedy
 
 import sys
 
@@ -10,7 +11,8 @@ def run_pipeline(timelimit, min_prefs_per_kid):
 
     # Run random grouping algorithm
     if run_baseline_random:
-        run_random_baseline(school, processed_data_folder)
+        # run_random_baseline(school, processed_data_folder)
+        run_greedy(school, processed_data_folder)
 
     # Run ILP algorithm
     if run_baseline_ilp:
