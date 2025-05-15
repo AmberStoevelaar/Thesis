@@ -15,9 +15,9 @@ To preprocess the data, follow these steps:
 1. Open the `main.py` file
 2. Make sure the paths to the processed data are correct
    - `processed_data_path = "data/processed_data"`
-3. Run `python3 main.py <school> <method: cp|milp|random> [min_prefs_per_kid] [timelimit]`
+3. Run `python3 main.py <school> <method: cp|ilp|random> [min_prefs_per_kid] [timelimit]`
    - `<school>`: The name of the school folder (e.g. `school1`)
-   - `<method>`: The optimization method to use (e.g. `cp`, `milp`, `random`)
+   - `<method>`: The optimization method to use (e.g. `cp`, `ilp`, `random`)
    - `[random_seed]`: Optional random seed for reproducibility (default is 42)
 
 ### Running evaluation

@@ -1,7 +1,7 @@
 from code.models.baseline_random import run_random_baseline
-from code.models.MILP_callback import run_milp
+from code.models.ILP import run_ilp
 from code.models.CP import run_cp
-from code.models.heuristic import run_greedy
+from code.models.greedy import run_greedy
 
 import sys
 
@@ -10,13 +10,13 @@ def run_pipeline(timelimit, min_prefs_per_kid):
     print("Running pipeline for school: {}".format(school))
 
     # Run random grouping algorithm
-    if run_baseline_random:
+    if run_baseline_greedy:
         # run_random_baseline(school, processed_data_folder)
         run_greedy(school, processed_data_folder)
 
     # Run ILP algorithm
     if run_baseline_ilp:
-        run_milp(school, processed_data_folder, timelimit, min_prefs_per_kid)
+        run_ilp(school, processed_data_folder, timelimit, min_prefs_per_kid)
 
     # Run CP algorithm
     if run_cp_model:
@@ -25,7 +25,7 @@ def run_pipeline(timelimit, min_prefs_per_kid):
 
 if __name__ == "__main__":
     if len(sys.argv) < 3:
-        print("Usage: python3 main.py <school> <method: cp|milp|random> [min_prefs_per_kid] [timelimit]")
+        print("Usage: python3 main.py <school> <method: cp|ilp|greedy> [min_prefs_per_kid] [timelimit]")
         sys.exit(1)
 
     school = sys.argv[1]
@@ -33,8 +33,8 @@ if __name__ == "__main__":
     random_seed = 42
 
     # Set which model to run
-    run_baseline_random = method == "random"
-    run_baseline_ilp = method == "milp"
+    run_baseline_greedy = method == "greedy"
+    run_baseline_ilp = method == "ilp"
     run_cp_model = method == "cp"
 
     # Set minimum preferences per kid (default 1)

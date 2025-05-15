@@ -40,7 +40,7 @@ def save_results(groups, results_folder, timestamp):
     df = pd.DataFrame(assignments, columns=['Student', 'Teacher'])
     df = df.sort_values(by='Teacher')
 
-    # Save to CSV
+    # Save
     file_path = os.path.join(results_folder, f"Greedy_{timestamp}.csv")
     df.to_csv(file_path, index=False)
 
@@ -61,7 +61,8 @@ def run_greedy(school, processed_data_folder):
 
     folder ='data/results'
     timestamp = datetime.now().strftime("%d-%m_%H:%M")
-    results_folder = os.path.join(folder, school)
+    results_folder = os.path.join(folder, school, "Greedy")
+    os.makedirs(results_folder, exist_ok=True)
 
     # Run the greedy grouping algorithm
     groups = greedy_grouping(students, teachers, variables, preference_matrix)

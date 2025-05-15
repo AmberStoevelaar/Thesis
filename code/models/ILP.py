@@ -43,7 +43,7 @@ def add_preference_objective(model, students, teachers, x, preference_matrix):
 
 
 def create_initial_model(students, teachers, preferences):
-    model = Model("milp")
+    model = Model("ilp")
     model, x = create_variables(model, students, teachers)
 
     total_prefs = add_preference_objective(model, students, teachers, x, preferences)
@@ -177,7 +177,7 @@ def create_model(school, processed_data_folder, min_prefs_per_kid):
 
 
 
-class MILPObjectiveLogger:
+class ILPObjectiveLogger:
     def __init__(self, results_folder, timestamp):
         self.start_time = time.time()
         self.best_objective = None
@@ -246,7 +246,7 @@ class BestSolutionLogger(Eventhdlr):
         return {"result": None}
 
 def solve_model(model, results_folder, timestamp, timelimit):
-    logger = MILPObjectiveLogger(results_folder, timestamp)
+    logger = ILPObjectiveLogger(results_folder, timestamp)
     model.setParam("limits/time", timelimit)
 
     # Register solution logger event handler
@@ -284,19 +284,20 @@ def save_solution(model, x, results_folder, timestamp, best_objective, start_tim
     print(f"Final objective value: {best_objective}, Time taken: {elapsed_time:.2f} seconds")
 
 
-def run_milp(school, processed_data_folder, timelimit, min_prefs_per_kid):
-    # Create model
+def run_ilp(school, processed_data_folder, timelimit, min_prefs_per_kid):
     model, x = create_model(school, processed_data_folder, min_prefs_per_kid)
+
     # Define paths
-    results_folder = 'data/results'
+    folder = 'data/results'
     timestamp = datetime.now().strftime("%d-%m_%H:%M")
-    os.makedirs(os.path.join(results_folder, school), exist_ok=True)
+    results_folder = os.path.join(folder, school, "ILP")
+    # os.makedirs(os.path.join(results_folder, school, "ILP"), exist_ok=True)
 
     # Solve model
     start_time = time.time()
-    best_objective, status_str = solve_model(model, os.path.join(results_folder, school), timestamp, timelimit)
+    best_objective, status_str = solve_model(model, os.path.join(results_folder), timestamp, timelimit)
 
     # Save solution
-    save_solution(model, x, os.path.join(results_folder, school), timestamp, best_objective, start_time)
+    save_solution(model, x, os.path.join(results_folder), timestamp, best_objective, start_time)
     print(f"Solver Status: {status_str}")
 

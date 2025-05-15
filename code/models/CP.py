@@ -229,7 +229,7 @@ def run_cp(school, processed_data_folder, timelimit, min_prefs_per_kid):
 
     folder ='data/results'
     timestamp = datetime.now().strftime("%d-%m_%H:%M")
-    results_folder = os.path.join(folder, school)
+    results_folder = os.path.join(folder, school, "CP")
 
 
     solution = solve_model(model, x, results_folder, timestamp, timelimit)
