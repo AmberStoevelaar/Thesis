@@ -146,7 +146,7 @@ def validate_constraints(data, variables):
         return False
 
     # Check if a student is assigned to multiple teachers
-    student_teacher_yes = data.constraints_teachers[data.constraints_teachers['Together'].str.lower() == 'yes']
+    student_teacher_yes = data.constraints_teachers[data.constraints_teachers['Together'] == 'Yes']
     teacher_counts = student_teacher_yes.groupby('Student')['Teacher'].nunique()
     multi_teacher_students = teacher_counts[teacher_counts > 1]
 

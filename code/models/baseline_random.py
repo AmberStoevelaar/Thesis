@@ -196,13 +196,17 @@ def generate_random_groups(initial_groups, initial_assigned_students, info_stude
     return groups
 
 
-def save_groups_to_csv(groups, school, results_data_folder='data/results', base_name='random'):
+def save_groups_to_csv(groups, school, results_data_folder='data/results'):
     results_folder = os.path.join(results_data_folder, school)
     if not os.path.exists(results_folder):
         os.makedirs(results_folder, exist_ok=True)
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    file_path = os.path.join(results_folder, f"{base_name}_{timestamp}.csv")
+
+    solution_folder = os.path.join(results_folder, "solutions")
+    os.makedirs(solution_folder, exist_ok=True)
+
+    file_path = os.path.join(solution_folder, f"random_{timestamp}.csv")
 
     # Convert to DataFrame
     data = []

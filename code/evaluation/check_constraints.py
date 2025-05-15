@@ -1,6 +1,9 @@
 import math
 
-from helpers import get_minimum_preferences_satisfied, get_satisfied_preferences_per_student
+try:
+    from .helpers import get_minimum_preferences_satisfied, get_satisfied_preferences_per_student
+except ImportError:
+    from helpers import get_minimum_preferences_satisfied, get_satisfied_preferences_per_student
 
 # 1. Each student should be assigned to exactly one group.
 def violates_unique_teacher_assignment(df):

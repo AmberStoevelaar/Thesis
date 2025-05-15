@@ -110,7 +110,7 @@ def add_hard_constraints(model, x, students, teachers, data, variables, preferen
 
     return model
 
-def add_balancing_constraints(model, x, students, teachers, data, attribute, deviation=0.1):
+def add_balancing_constraints(model, x, students, teachers, data, attribute, deviation):
     categories = data.info_students[attribute].unique()
 
     # Map from category to list of students
@@ -142,7 +142,7 @@ def add_balancing_constraints(model, x, students, teachers, data, attribute, dev
     return model
 
 
-def create_model(school, processed_data_folder, min_prefs_per_kid):
+def create_model(school, processed_data_folder, min_prefs_per_kid, deviation):
     # Read data
     data = read_dfs(school, processed_data_folder)
     variables = read_variables(data)
@@ -159,13 +159,13 @@ def create_model(school, processed_data_folder, min_prefs_per_kid):
     model = add_assignment_constraints(model, x, data, teachers)
 
     # Balancing constraints
-    model = add_balancing_constraints(model, x, students, teachers, data, attribute='Gender', deviation=0.1)
-    model = add_balancing_constraints(model, x, students, teachers, data, attribute='Grade', deviation=0.1)
-    model = add_balancing_constraints(model, x, students, teachers, data, attribute='Extra Care', deviation=0.1)
+    model = add_balancing_constraints(model, x, students, teachers, data, 'Gender', deviation)
+    model = add_balancing_constraints(model, x, students, teachers, data, 'Grade', deviation)
+    model = add_balancing_constraints(model, x, students, teachers, data, 'Extra Care', deviation)
 
     # Add balance constraints for behavior if specified
     if 'Behavior' in data.info_students.columns:
-        model = add_balancing_constraints(model, x, students, teachers, data, attribute='Behavior', deviation=0.1)
+        model = add_balancing_constraints(model, x, students, teachers, data, 'Behavior', deviation)
     else:
         print("No 'Behavior' attribute found in the data. Skipping balancing constraints for behavior.")
 
@@ -178,7 +178,7 @@ def create_model(school, processed_data_folder, min_prefs_per_kid):
 
 
 class ILPObjectiveLogger:
-    def __init__(self, results_folder, timestamp, timelimit, min_prefs_per_kid):
+    def __init__(self, results_folder, timestamp, timelimit, min_prefs_per_kid, deviation):
         self.start_time = time.time()
         self.best_objective = None
         self.solution_count = 0
@@ -199,6 +199,7 @@ class ILPObjectiveLogger:
             writer.writerow(["School", self.school])
             writer.writerow(["Method", "CP"])
             writer.writerow(["Min Prefs Per Kid", min_prefs_per_kid])
+            writer.writerow(["Deviation", deviation])
             writer.writerow(["Time Limit (s)", timelimit])
             writer.writerow([])
             writer.writerow(["Timestamp", "Solution #", "Elapsed Time (s)", "Objective Value"])
@@ -253,8 +254,8 @@ class BestSolutionLogger(Eventhdlr):
         self.logger.log_solution(self.model)
         return {"result": None}
 
-def solve_model(model, results_folder, timestamp, timelimit, min_prefs_per_kid):
-    logger = ILPObjectiveLogger(results_folder, timestamp, timelimit, min_prefs_per_kid)
+def solve_model(model, results_folder, timestamp, timelimit, min_prefs_per_kid, deviation):
+    logger = ILPObjectiveLogger(results_folder, timestamp, timelimit, min_prefs_per_kid, deviation)
     model.setParam("limits/time", timelimit)
 
     # Register solution logger event handler
@@ -267,16 +268,10 @@ def solve_model(model, results_folder, timestamp, timelimit, min_prefs_per_kid):
     logger.end_search(status_str=model.getStatus())
 
     status_str = model.getStatus()
-    if model.getNSols() > 0:
-        best_objective = model.getObjVal()
-    else:
-        best_objective = None
-    return best_objective, status_str
+    return status_str
 
-def save_solution(model, x, results_folder, timestamp, best_objective, start_time):
-    elapsed_time = time.time() - start_time
-    output_file = os.path.join(results_folder, f"ILP_{timestamp}.csv")
 
+def format_solution(model, x):
     assignments = []
     for (s, t), var in x.items():
         val = model.getVal(var)
@@ -286,26 +281,23 @@ def save_solution(model, x, results_folder, timestamp, best_objective, start_tim
 
     df = pd.DataFrame(assignments, columns=["Student", "Teacher"])
     df = df.sort_values(by="Teacher")
-    df.to_csv(output_file, index=False)
 
-    print(f"Solution saved to: {output_file}")
-    print(f"Final objective value: {best_objective}, Time taken: {elapsed_time:.2f} seconds")
+    return df
 
 
-def run_ilp(school, processed_data_folder, timelimit, min_prefs_per_kid):
-    model, x = create_model(school, processed_data_folder, min_prefs_per_kid)
+def run_ilp(school, processed_data_folder, timelimit, min_prefs_per_kid, deviation):
+    model, x = create_model(school, processed_data_folder, min_prefs_per_kid, deviation)
 
     # Define paths
     folder = 'data/results'
     timestamp = datetime.now().strftime("%d-%m_%H:%M")
     results_folder = os.path.join(folder, school, "ILP")
-    # os.makedirs(os.path.join(results_folder, school, "ILP"), exist_ok=True)
+    os.makedirs(os.path.join(results_folder, school, "ILP"), exist_ok=True)
 
     # Solve model
-    start_time = time.time()
-    best_objective, status_str = solve_model(model, os.path.join(results_folder), timestamp, timelimit, min_prefs_per_kid)
-
-    # Save solution
-    save_solution(model, x, os.path.join(results_folder), timestamp, best_objective, start_time)
+    status_str = solve_model(model, os.path.join(results_folder), timestamp, timelimit, min_prefs_per_kid, deviation)
     print(f"Solver Status: {status_str}")
+
+    df = format_solution(model, x)
+    return df, timestamp
 

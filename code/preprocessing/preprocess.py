@@ -68,13 +68,13 @@ def translate_dfs(info_teachers, info_students, group_preferences, constraints_s
 
     return info_teachers, info_students, group_preferences, constraints_students, constraints_teachers, current_groups
 
-
-
 def strip_whitespace(df):
     for col in df.columns:
-        if df[col].dtype == 'object':
-            df[col] = df[col].astype(str).str.strip()
+        if df[col].dtype == 'object':  # Only string/mixed type columns
+            df[col] = df[col].apply(lambda x: x.strip().capitalize() if isinstance(x, str) else x)
     return df
+
+
 
 def save_dataframes_to_csv(school, data, processed_data_folder):
     # Check if school folder exists
@@ -93,7 +93,7 @@ def save_dataframes_to_csv(school, data, processed_data_folder):
     # Save each dataframe to a CSV file
     for df_name, df in dfs.items():
         file_path = os.path.join(school_processed_folder, f'{df_name}.csv')
-        df.to_csv(file_path, index=False)
+        df.to_csv(file_path, index=False, na_rep='')
 
 
 def preprocess(school, raw_data_folder, processed_data_folder):

@@ -48,7 +48,7 @@ def add_balance_constraints(model, attribute, deviation, x, teachers, data):
 
     return model
 
-def add_hard_constraints(model, x, students, teachers, data, variables, preferences, min_prefs_per_kid):
+def add_hard_constraints(model, x, students, teachers, data, variables, preferences, min_prefs_per_kid, deviation):
     for s1 in students:
         # Each student must be assigned to exactly one teacher
         model.AddExactlyOne(x[s1, t] for t in teachers)
@@ -99,13 +99,13 @@ def add_hard_constraints(model, x, students, teachers, data, variables, preferen
         model.Add(sum(x[s, t] * extra_care_values[s] for s in students) <= variables.max_extra_care)
 
     # Add balance constraints
-    model = add_balance_constraints(model, 'Gender', 0.1, x, teachers, data)
-    model = add_balance_constraints(model, 'Grade', 0.1, x, teachers, data)
-    model = add_balance_constraints(model, 'Extra Care', 0.1, x, teachers, data)
+    model = add_balance_constraints(model, 'Gender', deviation, x, teachers, data)
+    model = add_balance_constraints(model, 'Grade', deviation, x, teachers, data)
+    model = add_balance_constraints(model, 'Extra Care', deviation, x, teachers, data)
 
     # Add balance constraints for behavior if specified
     if 'Behavior' in data.info_students.columns:
-        model = add_balance_constraints(model, 'Behavior', 0.1, x, teachers, data)
+        model = add_balance_constraints(model, 'Behavior', deviation, x, teachers, data)
     else:
         print("No 'Behavior' attribute found in the data. Skipping balancing constraints for behavior.")
 
@@ -126,7 +126,7 @@ def create_initial_model(students, teachers, data, variables):
 
     return model, x
 
-def create_model(school, processed_data_folder, min_prefs_per_kid):
+def create_model(school, processed_data_folder, min_prefs_per_kid, deviation):
     data = read_dfs(school, processed_data_folder)
     variables = read_variables(data)
 
@@ -138,7 +138,7 @@ def create_model(school, processed_data_folder, min_prefs_per_kid):
 
     # Add hard constraints
     preference_matrix = create_preference_matrix(data, variables)
-    model = add_hard_constraints(model, x, students, teachers, data, variables, preference_matrix, min_prefs_per_kid)
+    model = add_hard_constraints(model, x, students, teachers, data, variables, preference_matrix, min_prefs_per_kid, deviation)
 
     return model, x
 
@@ -146,7 +146,7 @@ def create_model(school, processed_data_folder, min_prefs_per_kid):
 
 
 class ObjectiveLogger(cp_model.CpSolverSolutionCallback):
-    def __init__(self, results_folder, timestamp, timelimit, min_prefs_per_kid):
+    def __init__(self, results_folder, timestamp, timelimit, min_prefs_per_kid, deviation):
         super().__init__()
         self.start_time = time.time()
         self.best_objective = None
@@ -170,6 +170,7 @@ class ObjectiveLogger(cp_model.CpSolverSolutionCallback):
             writer.writerow(["School", self.school])
             writer.writerow(["Method", "CP"])
             writer.writerow(["Min Prefs Per Kid", min_prefs_per_kid])
+            writer.writerow(["Deviation", deviation])
             writer.writerow(["Time Limit (s)", timelimit])
             writer.writerow([])
             writer.writerow(["Timestamp", "Solution #", "Elapsed Time (s)", "Objective Value"])
@@ -203,14 +204,14 @@ class ObjectiveLogger(cp_model.CpSolverSolutionCallback):
 
 
 
-def solve_model(model, x, results_folder, timestamp, timelimit, min_prefs_per_kid):
+def solve_model(model, x, results_folder, timestamp, timelimit, min_prefs_per_kid, deviation):
     # Create a solver and solve
     solver = cp_model.CpSolver()
     solver.parameters.max_time_in_seconds = timelimit
     solver.parameters.log_search_progress = True
 
     # Set up and attach the logger callback
-    logger = ObjectiveLogger(results_folder, timestamp, timelimit, min_prefs_per_kid)
+    logger = ObjectiveLogger(results_folder, timestamp, timelimit, min_prefs_per_kid, deviation)
     status = solver.SolveWithSolutionCallback(model, logger)
     logger.EndSearch(solver.StatusName(status))
 
@@ -222,30 +223,28 @@ def solve_model(model, x, results_folder, timestamp, timelimit, min_prefs_per_ki
         return solution
 
 
-def save_solution(solution, results_folder, timestamp):
+def format_solution(solution):
     assignments = [(student, teacher) for (student, teacher), assigned in solution.items() if assigned == 1]
-
     df = pd.DataFrame(assignments, columns=['Student', 'Teacher'])
     df = df.sort_values(by='Teacher')
-
-    file_path = os.path.join(results_folder, f"CP_{timestamp}.csv")
-    df.to_csv(file_path, index=False)
+    return df
 
 
-def run_cp(school, processed_data_folder, timelimit, min_prefs_per_kid):
-    model, x, = create_model(school, processed_data_folder, min_prefs_per_kid)
+def run_cp(school, processed_data_folder, timelimit, min_prefs_per_kid, deviation):
+    model, x, = create_model(school, processed_data_folder, min_prefs_per_kid, deviation)
 
     folder ='data/results'
     timestamp = datetime.now().strftime("%d-%m_%H:%M")
     results_folder = os.path.join(folder, school, "CP")
 
 
-    solution = solve_model(model, x, results_folder, timestamp, timelimit, min_prefs_per_kid)
+    solution = solve_model(model, x, results_folder, timestamp, timelimit, min_prefs_per_kid, deviation)
     if solution:
         print("Solution found!")
     else:
         print("No solution found.")
 
-    save_solution(solution, results_folder, timestamp)
+    df = format_solution(solution)
+    return df, timestamp
 
 
