@@ -292,10 +292,9 @@ def run_ilp(school, processed_data_folder, timelimit, min_prefs_per_kid, deviati
     folder = 'data/results'
     timestamp = datetime.now().strftime("%d-%m_%H:%M")
     results_folder = os.path.join(folder, school, "ILP")
-    os.makedirs(os.path.join(results_folder, school, "ILP"), exist_ok=True)
 
     # Solve model
-    status_str = solve_model(model, os.path.join(results_folder), timestamp, timelimit, min_prefs_per_kid, deviation)
+    status_str = solve_model(model, results_folder, timestamp, timelimit, min_prefs_per_kid, deviation)
     print(f"Solver Status: {status_str}")
 
     df = format_solution(model, x)

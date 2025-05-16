@@ -10,10 +10,12 @@ try:
     from .helpers import get_satisfied_preferences_per_student, get_minimum_preferences_satisfied
     from .check_constraints import run_check_constraints
     from .results_overview import show_counts
+    from .save_results import save_to_excel
 except ImportError:
     from helpers import get_satisfied_preferences_per_student, get_minimum_preferences_satisfied
     from check_constraints import run_check_constraints
     from results_overview import show_counts
+    from save_results import save_to_excel
 
 # Add the project root to sys.path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
@@ -38,7 +40,6 @@ def get_total_preferences_satisfied(df):
 
     return total
 
-
 def get_average_preferences(df):
     total_preferences_satisfied = get_total_preferences_satisfied(df)
     total_students = len(df)
@@ -59,7 +60,6 @@ def get_satisfaction_rate(df):
     provided = get_total_preferences_provided(df)
     satisfied = get_total_preferences_satisfied(df)
     return satisfied / provided
-
 
 def evaluate_accuracy_from_csv(df):
     score = get_total_preferences_satisfied(df)
@@ -112,6 +112,7 @@ def run_evaluation(merged, data, variables):
     print(f"Absolute difference: {absolute_difference}")
 
 
+
 def get_balance(df, attribute, group_col='Assigned Group'):
     result = {attribute: {}}
     values = df[attribute].dropna().unique()
@@ -123,7 +124,6 @@ def get_balance(df, attribute, group_col='Assigned Group'):
 
     return result
 
-
 def convert_keys_to_native(obj):
     if isinstance(obj, dict):
         return {int(k) if isinstance(k, (np.integer,)) else k: convert_keys_to_native(v) for k, v in obj.items()}
@@ -132,6 +132,49 @@ def convert_keys_to_native(obj):
     else:
         return obj
 
+def load_log_file_cleaned(log_path):
+    with open(log_path, 'r') as file:
+        lines = file.readlines()
+
+    # Find the line where the header starts (typically "Timestamp,...")
+    start_idx = next((i for i, line in enumerate(lines) if line.startswith("Timestamp")), None)
+
+    if start_idx is None:
+        raise ValueError("No header line found in log file.")
+
+    # Read from the header line onward
+    cleaned_lines = lines[start_idx:]
+    from io import StringIO
+    cleaned_csv = StringIO("".join(cleaned_lines))
+
+    # Load with pandas
+    df = pd.read_csv(cleaned_csv)
+    last_line = next((line.strip() for line in reversed(lines) if line.strip()), None)
+    return df, last_line
+
+def add_efficiency(school, method, timestamp, evaluation_results):
+    logs_folder = os.path.join("data/results", school, method, "logs")
+    log_path = os.path.join(logs_folder, f"{method}_{timestamp}.csv")
+
+    if os.path.exists(log_path):
+        # logs_df = pd.read_csv(log_path)
+        logs_df, final_status_line = load_log_file_cleaned(log_path)
+        # Drop any rows that are not data (e.g. config rows)
+        logs_df = logs_df[logs_df["Solution #"].apply(lambda x: str(x).isdigit())]
+
+        if not logs_df.empty:
+            logs_df["Elapsed Time (s)"] = pd.to_numeric(logs_df["Elapsed Time (s)"], errors='coerce')
+            first_feasible_time = logs_df["Elapsed Time (s)"].iloc[0]
+            last_time = logs_df["Elapsed Time (s)"].iloc[-1]
+
+            evaluation_results["time_to_first_feasible"] = float(first_feasible_time)
+            evaluation_results["time_to_optimal_or_timeout"] = float(last_time)
+
+        if final_status_line.startswith("Status,"):
+            status_value = final_status_line.split(",", 1)[-1].strip()
+            evaluation_results["final_status"] = status_value
+
+    return evaluation_results
 
 def save_evaluation(school, method, results_dict, timestamp):
     results_dict = convert_keys_to_native(results_dict)
@@ -143,9 +186,6 @@ def save_evaluation(school, method, results_dict, timestamp):
     with open(output_path, "w") as f:
         json.dump(results_dict, f, indent=4)
 
-
-
-
 def run_evaluate(school, processed_data_folder, method, groups, timestamp):
 
     processed_data_folder = "data/processed_data/"
@@ -155,6 +195,7 @@ def run_evaluate(school, processed_data_folder, method, groups, timestamp):
     # Merge dataframes
     merged = pd.merge(groups, data.info_students, on='Student', how='left')
     merged.rename(columns={'Teacher': 'Assigned Group'}, inplace=True)
+    print(f"Merged DataFrame:\n{merged.head()}")
 
     evaluation_results = {
         "objective": get_total_preferences_satisfied(merged),
@@ -179,10 +220,14 @@ def run_evaluate(school, processed_data_folder, method, groups, timestamp):
 
     evaluation_results["group_balance"] = balance
 
+    # Add efficiency metrics
+    evaluation_results = add_efficiency(school, method, timestamp, evaluation_results)
 
     # Save evaluation results
     save_evaluation(school, method, evaluation_results, timestamp)
 
+    # Save to Excel
+    save_to_excel(merged, school, method, timestamp)
 
 
 if __name__ == "__main__":
@@ -199,7 +244,7 @@ if __name__ == "__main__":
     print(f"Data {data}")
     variables = read_variables(data)
 
-    filename= "CP_15-05_20:51.csv"
+    filename= "ILP_16-05_14:31.csv"
     solutions_folder = os.path.join("data/results", school, method, "solutions")
     path = os.path.join(solutions_folder, filename)
     print(f"Loading file: {path}")

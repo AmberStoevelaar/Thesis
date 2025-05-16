@@ -9,3 +9,6 @@ data/*
 
 # Scripts
 scripts/*
+
+# School mapping scriptie
+school_mapping.txt
