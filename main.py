@@ -2,7 +2,8 @@ import os
 
 from code.models.baseline_random import run_random_baseline
 from code.models.ILP import run_ilp
-from code.models.CP import run_cp
+# from code.models.CP import run_cp
+from code.models.CPsoft import run_cp
 # from code.models.greedy import run_greedy
 # from code.models.baseline_random2 import run_greedy
 from code.models.baseline_random import run_random_baseline
@@ -44,7 +45,7 @@ def run_pipeline():
 
     # Run CP algorithm
     if run_cp_model:
-        results, timestamp = run_cp(school, processed_data_folder, timelimit, min_prefs_per_kid, deviation)
+        results, timestamp = run_cp(school, processed_data_folder, timelimit)
 
 
     if results is not None:
