@@ -29,7 +29,6 @@ def get_total_preferences_satisfied(df):
     for _, row in df.iterrows():
         student_group = row['Assigned Group']
         prefs = row[columns].tolist()
-        # print(f'Student: {row["Student"]}, Assigned Group: {student_group}, Preferences: {prefs}')
 
         for pref_student in prefs:
             if pd.isna(pref_student):
@@ -195,7 +194,6 @@ def run_evaluate(school, processed_data_folder, method, groups, timestamp):
     # Merge dataframes
     merged = pd.merge(groups, data.info_students, on='Student', how='left')
     merged.rename(columns={'Teacher': 'Assigned Group'}, inplace=True)
-    print(f"Merged DataFrame:\n{merged.head()}")
 
     evaluation_results = {
         "objective": get_total_preferences_satisfied(merged),
@@ -241,18 +239,15 @@ if __name__ == "__main__":
 
     processed_data_folder = "data/processed_data/"
     data = read_dfs(school, processed_data_folder)
-    print(f"Data {data}")
     variables = read_variables(data)
 
     filename= "ILP_16-05_14:31.csv"
     solutions_folder = os.path.join("data/results", school, method, "solutions")
     path = os.path.join(solutions_folder, filename)
-    print(f"Loading file: {path}")
     groups = pd.read_csv(path)
 
     match = re.search(r"(\d{2}-\d{2}_\d{2}:\d{2})", filename)
     timestamp = match.group(1)
-    print(f"Timestamp: {timestamp}")
 
     # Run evaluation
     run_evaluate(school, processed_data_folder, method, groups, timestamp)

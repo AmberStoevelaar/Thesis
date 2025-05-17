@@ -30,7 +30,7 @@ def add_objective(model, x, students, teachers, data, variables):
         attributes_to_balance.append('Behavior')
 
     balance_penalty_terms = add_balance(model, x, attributes_to_balance, teachers, data)
-    fairness_layers = get_fairness_layers_vars(model, x, students, teachers, preferences)
+    fairness_layers = add_fairness_layers(model, x, students, teachers, preferences)
 
     fairness_terms = []
     max_k = max(k for k, _ in fairness_layers) if fairness_layers else 1
@@ -40,8 +40,8 @@ def add_objective(model, x, students, teachers, data, variables):
         fairness_terms.append(weight * met_k)
 
     # Define objective weights
-    balance_weight = 100
-    fairness_weight = 1000
+    balance_weight = 10**9
+    fairness_weight = 100
 
     # Add the objective to the model
     model.Maximize(sum(preference_terms)
@@ -51,6 +51,19 @@ def add_objective(model, x, students, teachers, data, variables):
 
     return model
 
+def create_initial_model(students, teachers, data, variables):
+    model = cp_model.CpModel()
+
+    # Decision variables
+    # x[s][t] = 1 if student s assigned to teacher t
+    x = {}
+    for s in students:
+        for t in teachers:
+            x[s, t] = model.NewBoolVar(f'x_{s}_{t}')
+
+    model = add_objective(model, x, students, teachers, data, variables)
+
+    return model, x
 
 def add_balance(model, x, attributes, teachers, data):
     balance_penalty_terms = []
@@ -73,14 +86,13 @@ def add_balance(model, x, attributes, teachers, data):
                 over_dev = model.NewIntVar(0, max_students, f"over_dev_{t}_{attribute}_{cat}")
                 under_dev = model.NewIntVar(0, max_students, f"under_dev_{t}_{attribute}_{cat}")
 
-                # Add constraints for over and under deviation that
                 model.Add(assigned_count - int(target) == over_dev - under_dev)
                 balance_penalty_terms.append(over_dev)
                 balance_penalty_terms.append(under_dev)
 
     return balance_penalty_terms
 
-def get_fairness_layers_vars(model, x, students, teachers, preferences):
+def add_fairness_layers(model, x, students, teachers, preferences):
     all_layer_vars = []
 
     for s1 in students:
@@ -119,7 +131,6 @@ def get_fairness_layers_vars(model, x, students, teachers, preferences):
 
     return all_layer_vars
 
-
 def add_hard_constraints(model, x, students, teachers, data, variables):
     for s1 in students:
         # Each student must be assigned to exactly one teacher
@@ -155,21 +166,6 @@ def add_hard_constraints(model, x, students, teachers, data, variables):
 
     return model
 
-
-def create_initial_model(students, teachers, data, variables):
-    model = cp_model.CpModel()
-
-    # Decision variables
-    # x[s][t] = 1 if student s assigned to teacher t
-    x = {}
-    for s in students:
-        for t in teachers:
-            x[s, t] = model.NewBoolVar(f'x_{s}_{t}')
-
-    model = add_objective(model, x, students, teachers, data, variables)
-
-    return model, x
-
 def create_model(school, processed_data_folder):
     data = read_dfs(school, processed_data_folder)
     variables = read_variables(data)
@@ -203,7 +199,7 @@ class ObjectiveLogger(cp_model.CpSolverSolutionCallback):
         self.results_folder = log_folder
 
         # Set up the CSV file with a timestamp-based filename
-        self.file_path = os.path.join(self.results_folder, f"CP_{self.timestamp}.csv")
+        self.file_path = os.path.join(self.results_folder, f"CPSOFT_{self.timestamp}.csv")
 
         # Open the CSV file and write headers if it doesn't exist
         with open(self.file_path, mode='w', newline='') as file:
@@ -211,7 +207,7 @@ class ObjectiveLogger(cp_model.CpSolverSolutionCallback):
             # Add metadata to the CSV file
             writer.writerow(["Run Config"])
             writer.writerow(["School", self.school])
-            writer.writerow(["Method", "CP"])
+            writer.writerow(["Method", "CPSOFT"])
             writer.writerow(["Time Limit (s)", timelimit])
             writer.writerow([])
             writer.writerow(["Timestamp", "Solution #", "Elapsed Time (s)", "Objective Value"])
@@ -271,12 +267,12 @@ def format_solution(solution):
     return df
 
 
-def run_cp(school, processed_data_folder, timelimit):
+def run_cp_soft(school, processed_data_folder, timelimit):
     model, x, = create_model(school, processed_data_folder)
 
     folder ='data/results'
     timestamp = datetime.now().strftime("%d-%m_%H:%M")
-    results_folder = os.path.join(folder, school, "CP")
+    results_folder = os.path.join(folder, school, "CPSOFT")
 
 
     solution = solve_model(model, x, results_folder, timestamp, timelimit)

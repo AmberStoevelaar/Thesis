@@ -41,8 +41,6 @@ def update_df(df):
     df['Num Preferences'] = num_satisfied_list
     df['Matched Preferences'] = satisfied_with_list
 
-    print("Updated DataFrame with preferences satisfied and satisfied with columns.")
-    print(df[['Student', 'Assigned Group', 'Num Preferences', 'Matched Preferences']].head())
     return df
 
 
@@ -66,8 +64,6 @@ def create_teacher_student_df_from_df(df):
 def save_to_excel(df, school, method, timestamp):
     # Add number of preferences satisfied and satisfied with columns
     df = update_df(df)
-    print("updated df")
-    print(df.head())
 
     # Create a directory for the results if it doesn't exist
     solution_folder = os.path.join("data/results", school, method, "solutions")
@@ -82,8 +78,6 @@ def save_to_excel(df, school, method, timestamp):
         # sheet 2: final groups
         if 'Assigned Group' in df.columns:
             teacher_df = create_teacher_student_df_from_df(df)
-            print("Teacher DataFrame:")
-            print(teacher_df)
             teacher_df.to_excel(writer, index=False, sheet_name='Groups')
 
 
