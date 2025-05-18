@@ -18,7 +18,6 @@ def validate_students(data, students):
     invalid_students = [s for s in students_in_constraints if s not in students]
     return invalid_students
 
-# TODO dit werkt geloof ik nog niet
 def validate_student_preference(data, variables, students):
     preference_matrix = create_preference_matrix(data, variables)
 
@@ -61,6 +60,25 @@ def build_together_groups(data):
 
     return groups
 
+def can_separate(graph, n_groups):
+    color = {}
+
+    def dfs(student, c, component):
+        if student in color:
+            return color[student] == c
+        color[student] = c
+        component.add(student)
+        for neighbor in graph[student]:
+            if not dfs(neighbor, (c + 1) % n_groups, component):
+                return False
+        return True
+
+    for student in graph:
+        if student not in color:
+            component = set()
+            if not dfs(student, 0, component):
+                return False, component
+    return True, None
 
 
 def check_conflicting_constraints(data, groups):
@@ -160,6 +178,23 @@ def validate_constraints(data, variables):
     if not conflicts.empty:
         print(f'Conflicting student-teacher constraints found: {conflicts}')
         return False
+
+    # Check if the 'Together = No' graph can be separated into the given number of groups
+    no_graph = defaultdict(set)
+    for _, row in data.constraints_students.iterrows():
+        if row['Together'] == 'No':
+            s1, s2 = row['Student 1'], row['Student 2']
+            no_graph[s1].add(s2)
+            no_graph[s2].add(s1)
+
+    can_sep, problem_group = can_separate(no_graph, variables.n_groups)
+    if not can_sep:
+        print(f"Error: The following students are mutually constrained to not be together, "
+              f"but cannot be split into {variables.n_groups} groups: {sorted(problem_group)}")
+        return False
+
+
+
 
     return True
 
