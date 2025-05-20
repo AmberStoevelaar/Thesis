@@ -75,7 +75,7 @@ if __name__ == "__main__":
     run_soft_ilp_model = method == "ILPSOFT"
 
     # Set time limit for the solver (default 10 minutes)
-    timelimit = 10 * 60
+    timelimit = 30 * 60
     if len(sys.argv) > 3 and sys.argv[3] != "-":
         timelimit = int(sys.argv[3])
 

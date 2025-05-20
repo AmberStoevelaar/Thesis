@@ -257,6 +257,10 @@ class BestSolutionLogger(Eventhdlr):
 def solve_model(model, results_folder, timestamp, timelimit, min_prefs_per_kid, deviation):
     logger = ILPObjectiveLogger(results_folder, timestamp, timelimit, min_prefs_per_kid, deviation)
     model.setParam("limits/time", timelimit)
+    model.setParam("parallel/maxnthreads", 1)
+    model.setParam("randomization/randomseedshift", 42)
+    model.setParam("randomization/permutationseed", 42)
+    model.setParam("randomization/permutevars", False)
 
     # Register solution logger event handler
     model.includeEventhdlr(BestSolutionLogger(logger), "BestSolutionLogger", "Logs when a better solution is found")

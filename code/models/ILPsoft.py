@@ -41,7 +41,7 @@ def add_objective(model, students, teachers, x, data, variables):
         fairness_terms.append(weight * met_k)
 
     # # Weights
-    balance_weight = 10**9
+    balance_weight = 10000
     fairness_weight = 100
 
     # Set objective
@@ -258,6 +258,10 @@ class BestSolutionLogger(Eventhdlr):
 def solve_model(model, results_folder, timestamp, timelimit):
     logger = ObjectiveLogger(results_folder, timestamp, timelimit)
     model.setParam("limits/time", timelimit)
+    model.setParam("parallel/maxnthreads", 1)
+    model.setParam("randomization/randomseedshift", 42)
+    model.setParam("randomization/permutationseed", 42)
+    model.setParam("randomization/permutevars", False)
 
     # Register solution logger event handler
     model.includeEventhdlr(BestSolutionLogger(logger), "BestSolutionLogger", "Logs when a better solution is found")

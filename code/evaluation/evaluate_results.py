@@ -112,7 +112,7 @@ def run_evaluation(merged, data, variables):
 
 
 def get_balance(df, attribute, group_col='Assigned Group'):
-    result = {attribute: {}}
+    result = {}
     values = df[attribute].dropna().unique()
 
     for value in values:
@@ -123,15 +123,17 @@ def get_balance(df, attribute, group_col='Assigned Group'):
         group_percentages = subset[group_col].value_counts(normalize=True)
 
         # Build inner dict with counts and percentages
-        result[attribute][value] = {}
+        # result[attribute][value] = {}
+        result[value] = {
+            "total": int(len(subset)),
+        }
 
         for group, count in group_counts.items():
             percent = round(group_percentages[group], 2)
-            result[attribute][value][group] = {
+            result[value][group] = {
                 "count": int(count),
                 "percent": percent
             }
-
 
     return result
 
@@ -215,6 +217,9 @@ def run_evaluate(school, processed_data_folder, method, groups, timestamp):
         "minimum_preferences": get_minimum_preferences_satisfied(merged),
         # "total_preferences_provided": get_total_preferences_provided(merged)
     }
+
+    group_sizes = merged['Assigned Group'].value_counts().sort_index().to_dict()
+    evaluation_results["group_sizes"] = group_sizes
 
     print(f"Total preferences satisfied: {evaluation_results['preferences_satisfied']}")
     print(f"Average preferences: {evaluation_results['average_preferences']:.2f}")

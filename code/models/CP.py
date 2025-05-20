@@ -209,6 +209,8 @@ def solve_model(model, x, results_folder, timestamp, timelimit, min_prefs_per_ki
     solver = cp_model.CpSolver()
     solver.parameters.max_time_in_seconds = timelimit
     solver.parameters.log_search_progress = True
+    solver.parameters.random_seed = 42
+    solver.parameters.num_search_workers = 1
 
     # Set up and attach the logger callback
     logger = ObjectiveLogger(results_folder, timestamp, timelimit, min_prefs_per_kid, deviation)

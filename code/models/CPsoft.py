@@ -40,8 +40,8 @@ def add_objective(model, x, students, teachers, data, variables):
         fairness_terms.append(weight * met_k)
 
     # Define objective weights
-    balance_weight = 10**9
-    fairness_weight = 100
+    balance_weight = 1000
+    fairness_weight = 10
 
     # Add the objective to the model
     model.Maximize(sum(preference_terms)
@@ -246,6 +246,8 @@ def solve_model(model, x, results_folder, timestamp, timelimit):
     solver = cp_model.CpSolver()
     solver.parameters.max_time_in_seconds = timelimit
     solver.parameters.log_search_progress = True
+    solver.parameters.random_seed = 42
+    solver.parameters.num_search_workers = 1
 
     # Set up and attach the logger callback
     logger = ObjectiveLogger(results_folder, timestamp, timelimit)
