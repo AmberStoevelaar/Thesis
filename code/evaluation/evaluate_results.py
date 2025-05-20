@@ -111,15 +111,27 @@ def run_evaluation(merged, data, variables):
     print(f"Absolute difference: {absolute_difference}")
 
 
-
 def get_balance(df, attribute, group_col='Assigned Group'):
     result = {attribute: {}}
     values = df[attribute].dropna().unique()
 
     for value in values:
         subset = df[df[attribute] == value]
-        group_counts = subset[group_col].value_counts(normalize=True).to_dict()
-        result[attribute][value] = group_counts
+
+        # Counts and percentages of groups for this attribute value
+        group_counts = subset[group_col].value_counts()
+        group_percentages = subset[group_col].value_counts(normalize=True)
+
+        # Build inner dict with counts and percentages
+        result[attribute][value] = {}
+
+        for group, count in group_counts.items():
+            percent = round(group_percentages[group], 2)
+            result[attribute][value][group] = {
+                "count": int(count),
+                "percent": percent
+            }
+
 
     return result
 
@@ -168,6 +180,7 @@ def add_efficiency(school, method, timestamp, evaluation_results):
 
             evaluation_results["time_to_first_feasible"] = float(first_feasible_time)
             evaluation_results["time_to_optimal_or_timeout"] = float(last_time)
+            evaluation_results["objective"] = float(logs_df["Objective Value"].iloc[-1])
 
         if final_status_line.startswith("Status,"):
             status_value = final_status_line.split(",", 1)[-1].strip()
@@ -196,12 +209,18 @@ def run_evaluate(school, processed_data_folder, method, groups, timestamp):
     merged.rename(columns={'Teacher': 'Assigned Group'}, inplace=True)
 
     evaluation_results = {
-        "objective": get_total_preferences_satisfied(merged),
+        "preferences_satisfied": get_total_preferences_satisfied(merged),
         "average_preferences": get_average_preferences(merged),
         "satisfaction_rate": get_satisfaction_rate(merged),
         "minimum_preferences": get_minimum_preferences_satisfied(merged),
         # "total_preferences_provided": get_total_preferences_provided(merged)
     }
+
+    print(f"Total preferences satisfied: {evaluation_results['preferences_satisfied']}")
+    print(f"Average preferences: {evaluation_results['average_preferences']:.2f}")
+    print(f"Satisfaction rate: {evaluation_results['satisfaction_rate']:.2f}")
+    print(f"Minimum preferences satisfied: {evaluation_results['minimum_preferences']}")
+    # print(f"Total preferences provided by all students: {evaluation_results['total_preferences_provided']}")
 
     # # Relative & absolute difference
     # rel_excess, abs_diff = evaluate_accuracy_from_csv(merged)
@@ -241,13 +260,20 @@ if __name__ == "__main__":
     data = read_dfs(school, processed_data_folder)
     variables = read_variables(data)
 
-    filename= "ILP_16-05_14:31.csv"
+    filename = "ILPSOFT_20-05_10:14.csv"
+    # filename = "vorige.csv"
     solutions_folder = os.path.join("data/results", school, method, "solutions")
     path = os.path.join(solutions_folder, filename)
     groups = pd.read_csv(path)
 
     match = re.search(r"(\d{2}-\d{2}_\d{2}:\d{2})", filename)
-    timestamp = match.group(1)
+    if match:
+        # Extract the timestamp from the filename
+        timestamp = match.group(1)
+    else:
+        timestamp = "unknown"
+
+    print(f"Evaluating results for {school} using {method} with timestamp {timestamp}")
 
     # Run evaluation
     run_evaluate(school, processed_data_folder, method, groups, timestamp)
