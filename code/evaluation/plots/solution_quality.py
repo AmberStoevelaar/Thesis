@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 def get_file_paths(folder):
     all_files = []
     for school in os.listdir(folder):
-        school_path = os.path.join(folder, school)
+        school_path = os.path.join(folder, school, 'evals')
         if os.path.isdir(school_path):
             for fname in os.listdir(school_path):
                 if fname.endswith(".json"):
@@ -60,15 +60,19 @@ def plot_satisfaction_rate(stats):
            color='skyblue', edgecolor='black', error_kw=dict(elinewidth=1))
 
     ax.set_xticks(x)
-    ax.set_xticklabels(methods, rotation=45, ha='right')
+    ax.set_xticklabels(methods)
+    # ax.set_xticklabels(methods, rotation=45, ha='right')
     ax.set_xlabel('Method')
     ax.set_ylabel('Average\nSatisfaction Rate', labelpad=4)
     ax.set_ylim(0, 1)
     ax.tick_params(axis='y', pad=2)
     ax.set_title('Average Satisfaction Rate by Method', fontsize=10)
     ax.grid(True, axis='y', linestyle='--', alpha=0.5)
-
     plt.tight_layout()
+
+    output_path = os.path.join("plots", "satisfaction_rate.png")
+    plt.savefig(output_path, bbox_inches='tight')
+
     plt.show()
 
 
@@ -116,20 +120,25 @@ def plot_minimum_preferences(stats):
            color='skyblue', edgecolor='black', error_kw=dict(elinewidth=1))
 
     ax.set_xticks(x)
-    ax.set_xticklabels(methods, rotation=45, ha='right')
+    ax.set_xticklabels(methods)
+    # ax.set_xticklabels(methods, rotation=45, ha='right')
     ax.set_xlabel('Method')
     ax.set_ylabel('Average\nMinimum Preferences', labelpad=4)
-    ax.set_ylim(0, 1)
+    ax.set_ylim(0, 5)
     ax.tick_params(axis='y', pad=2)
     ax.set_title('Average Minimum Preferences by Method', fontsize=10)
     ax.grid(True, axis='y', linestyle='--', alpha=0.5)
-
     plt.tight_layout()
+
+    output_path = os.path.join("plots", "minimum_preferences.png")
+    plt.savefig(output_path, bbox_inches='tight')
+
     plt.show()
 
 
 if __name__ == "__main__":
     folder = 'final_results'
+    os.makedirs("plots", exist_ok=True)
 
     satisfaction_rate_stats = average_satisfaction(folder)
     plot_satisfaction_rate(satisfaction_rate_stats)
