@@ -1,12 +1,17 @@
 import os
 
-from code.models.baseline_random import run_random_baseline
-from code.models.ILP import run_ilp
-from code.models.CP import run_cp
+from code.models.ILPhard import run_ilp_hard
 from code.models.ILPsoft import run_ilp_soft
+from code.models.ILP import run_ilp
+
 from code.models.CPsoft import run_cp_soft
+from code.models.CPhard import run_cp_hard
+from code.models.CP import run_cp
+
+
 from code.models.baseline_random import run_random_baseline
 from code.evaluation.evaluate_results import run_evaluate
+from code.models.baseline_random import run_random_baseline
 
 import sys
 
@@ -41,6 +46,12 @@ def run_pipeline():
     if run_soft_ilp_model:
         results, timestamp = run_ilp_soft(school, processed_data_folder, timelimit)
 
+    # Run ILP hard algorithm
+    if run_hard_ilp_model:
+        results, timestamp = run_ilp_hard(school, processed_data_folder, timelimit, min_prefs_per_kid, deviation)
+
+
+
     # Run CP algorithm
     if run_cp_model:
         results, timestamp = run_cp(school, processed_data_folder, timelimit, min_prefs_per_kid, deviation)
@@ -48,6 +59,10 @@ def run_pipeline():
     # Run CP soft algorithm
     if run_soft_cp_model:
         results, timestamp = run_cp_soft(school, processed_data_folder, timelimit)
+
+    # Run CP hard algorithm
+    if run_hard_cp_model:
+        results, timestamp = run_cp_hard(school, processed_data_folder, timelimit, min_prefs_per_kid, deviation)
 
     if results is not None:
         # Save results
@@ -60,7 +75,7 @@ def run_pipeline():
 
 if __name__ == "__main__":
     if len(sys.argv) < 3:
-        print("Usage: python3 main.py <school> <method: cp|ilp|greedy|cpsoft|ilpsoft> [timelimit] [min_prefs_per_kid] [deviation]")
+        print("Usage: python3 main.py <school> <method: cp|ilp|greedy|cpsoft|ilpsoft|cphard|ilphard> [timelimit] [min_prefs_per_kid] [deviation]")
         sys.exit(1)
 
     school = sys.argv[1]
@@ -73,6 +88,8 @@ if __name__ == "__main__":
     run_cp_model = method == "CP"
     run_soft_cp_model = method == "CPSOFT"
     run_soft_ilp_model = method == "ILPSOFT"
+    run_hard_cp_model = method == "CPHARD"
+    run_hard_ilp_model = method == "ILPHARD"
 
     # Set time limit for the solver (default 10 minutes)
     timelimit = 30 * 60

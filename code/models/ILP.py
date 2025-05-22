@@ -10,80 +10,128 @@ import math
 from datetime import datetime
 from help_functions import create_preference_matrix, read_dfs, read_variables
 
-def create_variables(model, students, teachers):
-    x = {}
+def add_objective(model, students, teachers, x, data, variables):
+    preferences = create_preference_matrix(data, variables)
+    preference_terms = []
 
-    # Add binary variables for student-teacher assignments (x)
+    # Maximize student preferences
+    for s1 in students:
+        weight = 1 / max(1, preferences.loc[s1].sum())
+        for s2 in students:
+            if s1 != s2 and preferences.loc[s1, s2] > 0:
+                for t in teachers:
+                    # Create a helper variable that is 1 if both students are assigned to teacher t
+                    both_assigned = model.addVar(vtype="BINARY", name=f"pref_{s1}_{s2}_{t}")
+                    model.addCons(both_assigned <= x[s1, t])
+                    model.addCons(both_assigned <= x[s2, t])
+                    model.addCons(both_assigned >= x[s1, t] + x[s2, t] - 1)
+                    preference_terms.append(weight * both_assigned)
+
+    attributes_to_balance = ['Gender', 'Grade', 'Extra Care']
+    if 'Behavior' in data.info_students.columns:
+        attributes_to_balance.append('Behavior')
+
+    balance_penalty_terms = add_balance(model, x, attributes_to_balance, teachers, data)
+    fairness_layers = add_fairness_layers(model, x, students, teachers, preferences)
+
+    fairness_terms = []
+    max_k = max((k for k, _ in fairness_layers), default=1)
+    for k, met_k in fairness_layers:
+        weight = 10 ** (max_k - k)
+        fairness_terms.append(weight * met_k)
+
+    # # Weights
+    balance_weight = 1000
+    fairness_weight = 10
+
+    # Set objective
+    model.setObjective(
+        quicksum(preference_terms)
+        + (fairness_weight * quicksum(fairness_terms))
+        - (balance_weight * quicksum(balance_penalty_terms)),
+        "maximize"
+    )
+
+    return model
+
+def create_initial_model(students, teachers, data, variables):
+    model = Model("ilp")
+
+    # Decision variables
+    # x[s][t] = 1 if student s assigned to teacher t
+    x = {}
     for s in students:
         for t in teachers:
             x[s, t] = model.addVar(vtype="BINARY", name=f"x_{s}_{t}")
 
-    return model, x
-
-def add_preference_objective(model, students, teachers, x, preference_matrix):
-    # Total prefs is the sum of all satisfied preferences and is used in the objective to maximize
-    total_prefs = 0
-    for s1 in students:
-        # Count the number of satisfied preferences for each student
-        prefs = 0
-        for s2 in students:
-            if s1 != s2 and preference_matrix.loc[s1, s2] == 1:
-                # Create a variable to capture if s1 and s2 are together
-                together = model.addVar(vtype="BINARY", name=f"pref_{s1}_{s2}")
-                model.addCons(together <= quicksum(x[s1, t] * x[s2, t] for t in teachers))
-                model.addCons(together >= quicksum(x[s1, t] + x[s2, t] - 1 for t in teachers))
-
-                # If they are together, add to the preference count
-                prefs += together
-
-        # Add the preference count to the total prefs
-        total_prefs += prefs
-
-    return total_prefs
-
-
-def create_initial_model(students, teachers, preferences):
-    model = Model("ilp")
-    model, x = create_variables(model, students, teachers)
-
-    total_prefs = add_preference_objective(model, students, teachers, x, preferences)
-    model.setObjective(total_prefs, sense="maximize")
+    model = add_objective(model, students, teachers, x, data, variables)
 
     return model, x
 
+# SOFT CONSTRAINTS
+def add_balance(model, x, attributes, teachers, data):
+    balance_penalty_terms = []
+    max_students = len(data.info_students)
 
-def add_assignment_constraints(model, x, data, teachers):
-    for _, (s1, s2, together) in data.constraints_students.iterrows():
+    for attribute in attributes:
+        # Get unique values for the attribute
+        categories = data.info_students[attribute].unique()
+        # Get target per teacher for each category
+        category_students = {cat: data.info_students[data.info_students[attribute] == cat]['Student'].tolist() for cat in categories}
+        target_per_teacher = {cat: len(category_students[cat]) / len(teachers) for cat in categories}
+
         for t in teachers:
-            if together == "Yes":
-                # Students must be together
-                model.addCons(x[s1, t] == x[s2, t])
-            elif together == "No":
-                # Students must not be together
-                model.addCons(x[s1, t] + x[s2, t] <= 1)
+            for cat in categories:
+                # Get the list of students in this category
+                assigned_count = sum(x[s, t] for s in category_students[cat])
+                target = target_per_teacher[cat]
 
-    for _, (s, t, together) in data.constraints_teachers.iterrows():
-        if together == "Yes":
-            # Student must be with the teacher
-            model.addCons(x[s, t] == 1)
-        elif together == "No":
-            # Student must not be with the teacher
-            model.addCons(x[s, t] == 0)
+                # Calculate over and under deviation
+                # over_dev = model.addVar(vtype="INTEGER", name=f"over_dev_{cat}_{t}")
+                # under_dev = model.addVar(vtype="INTEGER", name=f"under_dev_{cat}_{t}")
+                over_dev = model.addVar(vtype="INTEGER", lb=0, ub=max_students, name=f"over_dev_{cat}_{t}")
+                under_dev = model.addVar(vtype="INTEGER", lb=0, ub=max_students, name=f"under_dev_{cat}_{t}")
 
-    return model
 
-def add_hard_constraints(model, x, students, teachers, data, variables, preferences, min_prefs_per_kid):
-    # Mapping "Extra Care" to values
-    extra_care_values = dict(zip(
-        data.info_students['Student'],
-        data.info_students['Extra Care'].map({'Yes': 1, 'No': 0})
-    ))
+                model.addCons(assigned_count - int(target) == over_dev - under_dev)
+                balance_penalty_terms.append(over_dev)
+                balance_penalty_terms.append(under_dev)
+
+    return balance_penalty_terms
+
+def add_fairness_layers(model, x, students, teachers, preferences):
+    all_layer_vars = []
 
     for s1 in students:
-        # Each student is assigned to exactly one teacher
-        model.addCons(quicksum(x[s1, t] for t in teachers) == 1, name=f"Student_{s1}_assigned_once")
+        preferred_students = [s2 for s2 in students if s1 != s2 and preferences.loc[s1, s2] == 1]
+        num_prefs = len(preferred_students)
 
-        # Add fairness constraint
+        if num_prefs == 0:
+            continue
+
+        satisfied_bools = []
+        # Get the preferred students for this student
+        for s2 in preferred_students:
+            together = model.addVar(vtype="BINARY", name=f"together_{s1}_{s2}")
+            model.addCons(together <= quicksum(x[s1, t] * x[s2, t] for t in teachers))
+            model.addCons(together >= quicksum(x[s1, t] + x[s2, t] - 1 for t in teachers))
+            satisfied_bools.append(together)
+
+        num_satisfied = model.addVar(vtype="INTEGER", lb=0, ub=num_prefs, name=f"satisfied_count_{s1}")
+        model.addCons(num_satisfied == quicksum(satisfied_bools))
+
+        for k in range(1, num_prefs + 1):
+            met_k = model.addVar(vtype="BINARY", name=f"{s1}_at_least_{k}_prefs")
+            model.addCons(num_satisfied >= k - (1 - met_k) * num_prefs)
+            model.addCons(num_satisfied <= num_prefs - (1 - met_k))
+
+            all_layer_vars.append((k, met_k))
+
+    return all_layer_vars
+
+# HARD CONSTRAINTS
+def add_fairness_constraints(model, x, students, teachers, preferences, min_prefs_per_kid):
+    for s1 in students:
         if min_prefs_per_kid > 0:
             preferred_students = [s2 for s2 in students if s1 != s2 and preferences.loc[s1, s2] == 1]
             if preferred_students:
@@ -99,31 +147,12 @@ def add_hard_constraints(model, x, students, teachers, data, variables, preferen
                 # Require that at least min preferences are satisfied
                 model.addCons(quicksum(together_vars) >= min_prefs_per_kid, name=f"{s1}_at_least_one_pref")
 
-    for t in teachers:
-        # Group size constraints
-        model.addCons(quicksum(x[s, t] for s in students) >= variables.min_group_size, name=f"Teacher_{t}_min_size")
-        model.addCons(quicksum(x[s, t] for s in students) <= variables.max_group_size, name=f"Teacher_{t}_max_size")
-
-        # Max students with extra care
-        model.addCons(quicksum(x[s, t] * extra_care_values[s] for s in students) <= variables.max_extra_care,
-            name=f"max_extra_care_{t}")
-
     return model
 
 def add_balancing_constraints(model, x, students, teachers, data, attribute, deviation):
     categories = data.info_students[attribute].unique()
-
-    # Map from category to list of students
-    category_students = {
-        cat: [s for s in students if data.info_students.loc[data.info_students['Student'] == s, attribute].iloc[0] == cat]
-        for cat in categories
-    }
-
-    # Compute ideal distribution per teacher
-    target_per_teacher = {
-        cat: len(category_students[cat]) / len(teachers)
-        for cat in categories
-    }
+    category_students = {cat: data.info_students[data.info_students[attribute] == cat]['Student'].tolist() for cat in categories}
+    target_per_teacher = {cat: len(category_students[cat]) / len(teachers) for cat in categories}
 
     for t in teachers:
         for cat in categories:
@@ -141,22 +170,41 @@ def add_balancing_constraints(model, x, students, teachers, data, attribute, dev
 
     return model
 
+def add_hard_constraints(model, x, students, teachers, data, variables, preferences, min_prefs_per_kid, deviation):
+    for s1 in students:
+        # Each student is assigned to exactly one teacher
+        model.addCons(quicksum(x[s1, t] for t in teachers) == 1, name=f"Student_{s1}_assigned_once")
 
-def create_model(school, processed_data_folder, min_prefs_per_kid, deviation):
-    # Read data
-    data = read_dfs(school, processed_data_folder)
-    variables = read_variables(data)
+    # Assignment constraints
+    for _, (s1, s2, together) in data.constraints_students.iterrows():
+        for t in teachers:
+            if together == "Yes":
+                # Students must be together
+                model.addCons(x[s1, t] == x[s2, t])
+            elif together == "No":
+                # Students must not be together
+                model.addCons(x[s1, t] + x[s2, t] <= 1)
 
-    students = data.info_students['Student'].tolist()
-    teachers = data.info_teachers['Teacher'].tolist()
+    for _, (s, t, together) in data.constraints_teachers.iterrows():
+        if together == "Yes":
+            # Student must be with the teacher
+            model.addCons(x[s, t] == 1)
+        elif together == "No":
+            # Student must not be with the teacher
+            model.addCons(x[s, t] == 0)
 
-    preference_matrix = create_preference_matrix(data, variables)
+    for t in teachers:
+        # Group size constraints
+        model.addCons(quicksum(x[s, t] for s in students) >= variables.min_group_size, name=f"Teacher_{t}_min_size")
+        model.addCons(quicksum(x[s, t] for s in students) <= variables.max_group_size, name=f"Teacher_{t}_max_size")
 
-    model, x = create_initial_model(students, teachers, preference_matrix)
+        # Max extra care constraints
+        extra_care_values = dict(zip(data.info_students['Student'], data.info_students['Extra Care'].map({'Yes': 1, 'No': 0})))
+        model.addCons(quicksum(x[s, t] * extra_care_values[s] for s in students) <= variables.max_extra_care,
+            name=f"max_extra_care_{t}")
 
-    # Hard constraints
-    model = add_hard_constraints(model, x, students, teachers, data, variables, preference_matrix, min_prefs_per_kid)
-    model = add_assignment_constraints(model, x, data, teachers)
+    # Add fairness constraints
+    model = add_fairness_constraints(model, x, students, teachers, preferences, min_prefs_per_kid)
 
     # Balancing constraints
     model = add_balancing_constraints(model, x, students, teachers, data, 'Gender', deviation)
@@ -169,11 +217,25 @@ def create_model(school, processed_data_folder, min_prefs_per_kid, deviation):
     else:
         print("No 'Behavior' attribute found in the data. Skipping balancing constraints for behavior.")
 
+    return model
+
+
+def create_model(school, processed_data_folder, min_prefs_per_kid, deviation):
+    # Read data
+    data = read_dfs(school, processed_data_folder)
+    variables = read_variables(data)
+
+    students = data.info_students['Student'].tolist()
+    teachers = data.info_teachers['Teacher'].tolist()
+
+    # Initialize model
+    model, x = create_initial_model(students, teachers, data, variables)
+
+    # Hard constraints
+    preference_matrix = create_preference_matrix(data, variables)
+    model = add_hard_constraints(model, x, students, teachers, data, variables, preference_matrix, min_prefs_per_kid, deviation)
+
     return model, x
-
-
-
-
 
 
 
@@ -274,7 +336,6 @@ def solve_model(model, results_folder, timestamp, timelimit, min_prefs_per_kid, 
     status_str = model.getStatus()
     return status_str
 
-
 def format_solution(model, x):
     assignments = []
     for (s, t), var in x.items():
@@ -287,7 +348,6 @@ def format_solution(model, x):
     df = df.sort_values(by="Teacher")
 
     return df
-
 
 def run_ilp(school, processed_data_folder, timelimit, min_prefs_per_kid, deviation):
     model, x = create_model(school, processed_data_folder, min_prefs_per_kid, deviation)

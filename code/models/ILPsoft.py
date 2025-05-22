@@ -163,6 +163,8 @@ def add_hard_constraints(model, x, students, teachers, data, variables):
 
     return model
 
+
+
 def create_model(school, processed_data_folder):
     # Read data
     data = read_dfs(school, processed_data_folder)
@@ -274,7 +276,6 @@ def solve_model(model, results_folder, timestamp, timelimit):
 
     status_str = model.getStatus()
     return status_str
-
 
 def format_solution(model, x):
     assignments = []

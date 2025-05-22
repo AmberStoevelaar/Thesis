@@ -10,12 +10,10 @@ from help_functions import create_preference_matrix, read_dfs, read_variables
 
 def add_objective(model, x, students, teachers, data, variables):
     preferences = create_preference_matrix(data, variables)
-    preference_terms = []
+    objectives = []
 
     # Maximize student preferences
     for s1 in students:
-        # Add weight to give more importance to students with less preferences
-        weight = 1 / max(1, preferences.loc[s1].sum())
         for s2 in students:
             if s1 != s2 and preferences.loc[s1, s2] > 0:
                 for t in teachers:
@@ -23,116 +21,13 @@ def add_objective(model, x, students, teachers, data, variables):
                     both_assigned = model.NewBoolVar(f"same_{s1}_{s2}_{t}")
                     model.AddBoolAnd([x[s1, t], x[s2, t]]).OnlyEnforceIf(both_assigned)
                     model.AddBoolOr([x[s1, t].Not(), x[s2, t].Not()]).OnlyEnforceIf(both_assigned.Not())
-                    preference_terms.append(weight * both_assigned)
-
-    attributes_to_balance = ['Gender', 'Grade', 'Extra Care']
-    if 'Behavior' in data.info_students.columns:
-        attributes_to_balance.append('Behavior')
-
-    balance_penalty_terms = add_balance(model, x, attributes_to_balance, teachers, data)
-    fairness_layers = add_fairness_layers(model, x, students, teachers, preferences)
-
-    fairness_terms = []
-    max_k = max(k for k, _ in fairness_layers) if fairness_layers else 1
-    # Exponential weighting (satisfying higher k's matters more)
-    for k, met_k in fairness_layers:
-        weight = 10 ** (max_k - k)
-        fairness_terms.append(weight * met_k)
-
-    # Define objective weights
-    balance_weight = 1000
-    fairness_weight = 10
+                    objectives.append(both_assigned)
 
     # Add the objective to the model
-    model.Maximize(sum(preference_terms)
-        + (fairness_weight * sum(fairness_terms))
-        -( balance_weight * sum(balance_penalty_terms))
-    )
+    model.Maximize(sum(objectives))
 
     return model
 
-def create_initial_model(students, teachers, data, variables):
-    model = cp_model.CpModel()
-
-    # Decision variables
-    # x[s][t] = 1 if student s assigned to teacher t
-    x = {}
-    for s in students:
-        for t in teachers:
-            x[s, t] = model.NewBoolVar(f'x_{s}_{t}')
-
-    model = add_objective(model, x, students, teachers, data, variables)
-
-    return model, x
-
-# SOFT CONSTRAINTS
-def add_balance(model, x, attributes, teachers, data):
-    balance_penalty_terms = []
-    max_students = len(data.info_students)
-
-    for attribute in attributes:
-        # Get the unique categories for the attribute
-        categories = data.info_students[attribute].unique()
-        # Get target per teacher for each category
-        category_students = {cat: data.info_students[data.info_students[attribute] == cat]['Student'].tolist() for cat in categories}
-        target_per_teacher = {cat: len(category_students[cat]) / len(teachers) for cat in categories}
-
-        for t in teachers:
-            for cat in categories:
-                # Get the list of students in this category
-                assigned_count = sum(x[s, t] for s in category_students[cat])
-                target = target_per_teacher[cat]
-
-                # Calculate over and under deviation
-                over_dev = model.NewIntVar(0, max_students, f"over_dev_{t}_{attribute}_{cat}")
-                under_dev = model.NewIntVar(0, max_students, f"under_dev_{t}_{attribute}_{cat}")
-
-                model.Add(assigned_count - int(target) == over_dev - under_dev)
-                balance_penalty_terms.append(over_dev)
-                balance_penalty_terms.append(under_dev)
-
-    return balance_penalty_terms
-
-def add_fairness_layers(model, x, students, teachers, preferences):
-    all_layer_vars = []
-
-    for s1 in students:
-        preferred_students = [s2 for s2 in students if s1 != s2 and preferences.loc[s1, s2] == 1]
-        num_prefs = len(preferred_students)
-
-        if num_prefs == 0:
-            continue
-
-        satisfied_bools = []
-        # Get the preferred students for this student
-        for s2 in preferred_students:
-            both_assigned = model.NewBoolVar(f"satisfied_{s1}_{s2}")
-            both_assigned_per_teacher = [
-                model.NewBoolVar(f"{s1}_{s2}_with_{t}") for t in teachers
-            ]
-            for i, t in enumerate(teachers):
-                model.AddBoolAnd([x[s1, t], x[s2, t]]).OnlyEnforceIf(both_assigned_per_teacher[i])
-                model.AddBoolOr([x[s1, t].Not(), x[s2, t].Not()]).OnlyEnforceIf(both_assigned_per_teacher[i].Not())
-
-            model.AddBoolOr(both_assigned_per_teacher).OnlyEnforceIf(both_assigned)
-            model.AddBoolAnd([v.Not() for v in both_assigned_per_teacher]).OnlyEnforceIf(both_assigned.Not())
-
-            satisfied_bools.append(both_assigned)
-
-        # Count the number of satisfied preferences for this student
-        num_satisfied = model.NewIntVar(0, num_prefs, f"num_satisfied_{s1}")
-        model.Add(num_satisfied == sum(satisfied_bools))
-
-        # Preference layers: has at least k prefs satisfied?
-        for k in range(1, num_prefs + 1):
-            met_k = model.NewBoolVar(f"{s1}_at_least_{k}_prefs")
-            model.Add(num_satisfied >= k).OnlyEnforceIf(met_k)
-            model.Add(num_satisfied < k).OnlyEnforceIf(met_k.Not())
-            all_layer_vars.append((k, met_k))
-
-    return all_layer_vars
-
-# HARD CONSTRAINTS
 def add_balance_constraints(model, attribute, deviation, x, teachers, data):
     categories = data.info_students[attribute].unique()
     category_students = {cat: data.info_students[data.info_students[attribute] == cat]['Student'].tolist() for cat in categories}
@@ -153,8 +48,12 @@ def add_balance_constraints(model, attribute, deviation, x, teachers, data):
 
     return model
 
-def add_fairness_constraints(model, x, students, teachers, preferences, min_prefs_per_kid):
+def add_hard_constraints(model, x, students, teachers, data, variables, preferences, min_prefs_per_kid, deviation):
     for s1 in students:
+        # Each student must be assigned to exactly one teacher
+        model.AddExactlyOne(x[s1, t] for t in teachers)
+
+        # Add fairness constraint
         if min_prefs_per_kid > 0:
             preferred_students = [s2 for s2 in students if s1 != s2 and preferences.loc[s1, s2] == 1]
 
@@ -170,13 +69,6 @@ def add_fairness_constraints(model, x, students, teachers, preferences, min_pref
 
                 # Require that at least min preferences are satisfied
                 model.Add(sum(together_vars) >= min_prefs_per_kid)
-
-    return model
-
-def add_hard_constraints(model, x, students, teachers, data, variables, preferences, min_prefs_per_kid, deviation):
-    for s1 in students:
-        # Each student must be assigned to exactly one teacher
-        model.AddExactlyOne(x[s1, t] for t in teachers)
 
     # Assignment constraints
     for _, (s1, s2, together) in data.constraints_students.iterrows():
@@ -206,9 +98,6 @@ def add_hard_constraints(model, x, students, teachers, data, variables, preferen
     for t in teachers:
         model.Add(sum(x[s, t] * extra_care_values[s] for s in students) <= variables.max_extra_care)
 
-    # Add fairness constraints
-    model = add_fairness_constraints(model, x, students, teachers, preferences, min_prefs_per_kid)
-
     # Add balance constraints
     model = add_balance_constraints(model, 'Gender', deviation, x, teachers, data)
     model = add_balance_constraints(model, 'Grade', deviation, x, teachers, data)
@@ -222,7 +111,21 @@ def add_hard_constraints(model, x, students, teachers, data, variables, preferen
 
     return model
 
-# FINAL MODEL CREATION
+
+def create_initial_model(students, teachers, data, variables):
+    model = cp_model.CpModel()
+
+    # Decision variables
+    # x[s][t] = 1 if student s assigned to teacher t
+    x = {}
+    for s in students:
+        for t in teachers:
+            x[s, t] = model.NewBoolVar(f'x_{s}_{t}')
+
+    model = add_objective(model, x, students, teachers, data, variables)
+
+    return model, x
+
 def create_model(school, processed_data_folder, min_prefs_per_kid, deviation):
     data = read_dfs(school, processed_data_folder)
     variables = read_variables(data)
@@ -240,6 +143,8 @@ def create_model(school, processed_data_folder, min_prefs_per_kid, deviation):
     return model, x
 
 
+
+
 class ObjectiveLogger(cp_model.CpSolverSolutionCallback):
     def __init__(self, results_folder, timestamp, timelimit, min_prefs_per_kid, deviation):
         super().__init__()
@@ -255,7 +160,7 @@ class ObjectiveLogger(cp_model.CpSolverSolutionCallback):
         self.results_folder = log_folder
 
         # Set up the CSV file with a timestamp-based filename
-        self.file_path = os.path.join(self.results_folder, f"CP_{self.timestamp}.csv")
+        self.file_path = os.path.join(self.results_folder, f"CPhard_{self.timestamp}.csv")
 
         # Open the CSV file and write headers if it doesn't exist
         with open(self.file_path, mode='w', newline='') as file:
@@ -263,7 +168,7 @@ class ObjectiveLogger(cp_model.CpSolverSolutionCallback):
             # Add metadata to the CSV file
             writer.writerow(["Run Config"])
             writer.writerow(["School", self.school])
-            writer.writerow(["Method", "CP"])
+            writer.writerow(["Method", "CPhard"])
             writer.writerow(["Min Prefs Per Kid", min_prefs_per_kid])
             writer.writerow(["Deviation", deviation])
             writer.writerow(["Time Limit (s)", timelimit])
@@ -319,6 +224,7 @@ def solve_model(model, x, results_folder, timestamp, timelimit, min_prefs_per_ki
         solution = {key: solver.Value(var) for key, var in x.items()}
         return solution
 
+
 def format_solution(solution):
     assignments = [(student, teacher) for (student, teacher), assigned in solution.items() if assigned == 1]
     df = pd.DataFrame(assignments, columns=['Student', 'Teacher'])
@@ -326,12 +232,13 @@ def format_solution(solution):
     return df
 
 
-def run_cp(school, processed_data_folder, timelimit, min_prefs_per_kid, deviation):
+def run_cp_hard(school, processed_data_folder, timelimit, min_prefs_per_kid, deviation):
     model, x, = create_model(school, processed_data_folder, min_prefs_per_kid, deviation)
 
     folder ='data/results'
     timestamp = datetime.now().strftime("%d-%m_%H:%M")
-    results_folder = os.path.join(folder, school, "CP")
+    results_folder = os.path.join(folder, school, "CPhard")
+
 
     solution = solve_model(model, x, results_folder, timestamp, timelimit, min_prefs_per_kid, deviation)
     if solution:
