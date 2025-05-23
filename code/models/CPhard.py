@@ -241,12 +241,14 @@ def run_cp_hard(school, processed_data_folder, timelimit, min_prefs_per_kid, dev
 
 
     solution = solve_model(model, x, results_folder, timestamp, timelimit, min_prefs_per_kid, deviation)
+    
     if solution:
-        print("Solution found!")
+        df = format_solution(solution)
+        return df, timestamp
     else:
         print("No solution found.")
+        return None, timestamp
 
-    df = format_solution(solution)
-    return df, timestamp
+
 
 

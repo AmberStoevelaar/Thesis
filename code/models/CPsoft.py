@@ -278,12 +278,12 @@ def run_cp_soft(school, processed_data_folder, timelimit):
 
 
     solution = solve_model(model, x, results_folder, timestamp, timelimit)
+
     if solution:
-        print("Solution found!")
+        df = format_solution(solution)
+        return df, timestamp
     else:
         print("No solution found.")
-
-    df = format_solution(solution)
-    return df, timestamp
+        return None, timestamp
 
 

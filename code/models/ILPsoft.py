@@ -281,7 +281,6 @@ def format_solution(model, x):
     assignments = []
     for (s, t), var in x.items():
         val = model.getVal(var)
-        # print(f"Variable: {var.name}, Value: {val}")
         if val > 0.5:
             assignments.append((s, t))
 
@@ -303,6 +302,10 @@ def run_ilp_soft(school, processed_data_folder, timelimit):
     status_str = solve_model(model, results_folder, timestamp, timelimit)
     print(f"Solver Status: {status_str}")
 
-    df = format_solution(model, x)
-    return df, timestamp
+    if model.getNSols() > 0:
+        df = format_solution(model, x)
+        return df, timestamp
+    else:
+        print("No solution found.")
+        return None, timestamp
 

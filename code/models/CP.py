@@ -334,12 +334,12 @@ def run_cp(school, processed_data_folder, timelimit, min_prefs_per_kid, deviatio
     results_folder = os.path.join(folder, school, "CP")
 
     solution = solve_model(model, x, results_folder, timestamp, timelimit, min_prefs_per_kid, deviation)
+
     if solution:
-        print("Solution found!")
+        df = format_solution(solution)
+        return df, timestamp
     else:
         print("No solution found.")
-
-    df = format_solution(solution)
-    return df, timestamp
+        return None, timestamp
 
 
