@@ -40,8 +40,8 @@ def add_objective(model, x, students, teachers, data, variables):
         fairness_terms.append(weight * met_k)
 
     # Define objective weights
-    balance_weight = 1000
-    fairness_weight = 10
+    balance_weight = 1
+    fairness_weight = 1
 
     # Add the objective to the model
     model.Maximize(sum(preference_terms)
@@ -296,9 +296,6 @@ class ObjectiveLogger(cp_model.CpSolverSolutionCallback):
                 writer = csv.writer(file)
                 writer.writerow(["Status", status_str])
 
-
-
-
 def solve_model(model, x, results_folder, timestamp, timelimit, min_prefs_per_kid, deviation):
     # Create a solver and solve
     solver = cp_model.CpSolver()
@@ -327,17 +324,25 @@ def format_solution(solution):
 
 
 def run_cp(school, processed_data_folder, timelimit, min_prefs_per_kid, deviation):
-    model, x, = create_model(school, processed_data_folder, min_prefs_per_kid, deviation)
-
     folder ='data/results'
     timestamp = datetime.now().strftime("%d-%m_%H:%M")
     results_folder = os.path.join(folder, school, "CP")
 
-    solution = solve_model(model, x, results_folder, timestamp, timelimit, min_prefs_per_kid, deviation)
+    fallback_configs = [
+        (min_prefs_per_kid, deviation),
+        (0, deviation),
+        (min_prefs_per_kid, 1.0),
+        (0, 1.0),
+    ]
 
-    if solution:
-        df = format_solution(solution)
-        return df, timestamp
+    for min_prefs, dev in fallback_configs:
+        print(f"New run. Trying: min_prefs_per_kid={min_prefs}, deviation={dev}")
+        model, x = create_model(school, processed_data_folder, min_prefs, dev)
+        solution = solve_model(model, x, results_folder, timestamp, timelimit, min_prefs, dev)
+        if solution:
+            df = format_solution(solution)
+            return df, timestamp
+
     else:
         print("No solution found.")
         return None, timestamp

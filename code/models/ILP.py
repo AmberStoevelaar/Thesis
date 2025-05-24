@@ -349,21 +349,26 @@ def format_solution(model, x):
     return df
 
 def run_ilp(school, processed_data_folder, timelimit, min_prefs_per_kid, deviation):
-    model, x = create_model(school, processed_data_folder, min_prefs_per_kid, deviation)
-
-    # Define paths
     folder = 'data/results'
     timestamp = datetime.now().strftime("%d-%m_%H:%M")
     results_folder = os.path.join(folder, school, "ILP")
 
-    # Solve model
-    status_str = solve_model(model, results_folder, timestamp, timelimit, min_prefs_per_kid, deviation)
-    print(f"Solver Status: {status_str}")
+    fallback_configs = [
+        (min_prefs_per_kid, deviation),
+        (0, deviation),
+        (min_prefs_per_kid, 1.0),
+        (0, 1.0),
+    ]
 
-    if model.getNSols() > 0:
-        df = format_solution(model, x)
-        return df, timestamp
-    else:
-        print("No solution found.")
-        return None, timestamp
+    for min_prefs, dev in fallback_configs:
+        print(f"New run. Trying: min_prefs_per_kid={min_prefs}, deviation={dev}")
+        model, x = create_model(school, processed_data_folder, min_prefs, dev)
+        solution = solve_model(model, results_folder, timestamp, timelimit, min_prefs, dev)
+        # if solution:
+        if model.getNSols() > 0:
+            df = format_solution(model, x)
+            return df, timestamp
+
+    print("No solution found.")
+    return None, timestamp
 
