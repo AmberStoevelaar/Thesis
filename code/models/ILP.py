@@ -10,6 +10,27 @@ import math
 from datetime import datetime
 from help_functions import create_preference_matrix, read_dfs, read_variables
 
+def estimated_max_prefs(preferences, students, teachers):
+    # Sum the total number of peer preferences, scaled by how many teachers
+    return sum(preferences.loc[s].sum() * len(teachers) for s in students) or 1
+
+def estimated_max_fairness(fairness_layers):
+    # Exponentially weighted total fairness score across all layers
+    max_k = max((k for k, _ in fairness_layers), default=1)
+    return sum(10 ** (max_k - k) for k, _ in fairness_layers) or 1
+
+def estimated_max_balance_penalty(data, attributes_to_balance, teachers):
+    # Maximum possible deviation if all students of a type go to one teacher
+    total_penalty = 0
+    num_teachers = len(teachers)
+    for attr in attributes_to_balance:
+        counts = data.info_students[attr].value_counts()
+        for value_count in counts.values:
+            ideal = value_count / num_teachers
+            total_penalty += abs(value_count - ideal)
+    return total_penalty or 1
+
+
 def add_objective(model, students, teachers, x, data, variables):
     preferences = create_preference_matrix(data, variables)
     preference_terms = []
@@ -32,23 +53,19 @@ def add_objective(model, students, teachers, x, data, variables):
         attributes_to_balance.append('Behavior')
 
     balance_penalty_terms = add_balance(model, x, attributes_to_balance, teachers, data)
-    fairness_layers = add_fairness_layers(model, x, students, teachers, preferences)
 
-    fairness_terms = []
-    max_k = max((k for k, _ in fairness_layers), default=1)
-    for k, met_k in fairness_layers:
-        weight = 10 ** (max_k - k)
-        fairness_terms.append(weight * met_k)
+    # Compute estimated maxima outside the model
+    preference_scale = 1 / max(1, estimated_max_prefs(preferences, students, teachers))
+    balance_scale = 1 / max(1, estimated_max_balance_penalty(data, attributes_to_balance, teachers))
 
-    # # Weights
-    balance_weight = 1000
-    fairness_weight = 10
+    # Apply scaling to weights
+    preference_weight = 2 * preference_scale
+    balance_weight = 1 * balance_scale
 
     # Set objective
     model.setObjective(
-        quicksum(preference_terms)
-        + (fairness_weight * quicksum(fairness_terms))
-        - (balance_weight * quicksum(balance_penalty_terms)),
+        preference_weight * quicksum(preference_terms)
+        - balance_weight * quicksum(balance_penalty_terms),
         "maximize"
     )
 
@@ -98,36 +115,6 @@ def add_balance(model, x, attributes, teachers, data):
                 balance_penalty_terms.append(under_dev)
 
     return balance_penalty_terms
-
-def add_fairness_layers(model, x, students, teachers, preferences):
-    all_layer_vars = []
-
-    for s1 in students:
-        preferred_students = [s2 for s2 in students if s1 != s2 and preferences.loc[s1, s2] == 1]
-        num_prefs = len(preferred_students)
-
-        if num_prefs == 0:
-            continue
-
-        satisfied_bools = []
-        # Get the preferred students for this student
-        for s2 in preferred_students:
-            together = model.addVar(vtype="BINARY", name=f"together_{s1}_{s2}")
-            model.addCons(together <= quicksum(x[s1, t] * x[s2, t] for t in teachers))
-            model.addCons(together >= quicksum(x[s1, t] + x[s2, t] - 1 for t in teachers))
-            satisfied_bools.append(together)
-
-        num_satisfied = model.addVar(vtype="INTEGER", lb=0, ub=num_prefs, name=f"satisfied_count_{s1}")
-        model.addCons(num_satisfied == quicksum(satisfied_bools))
-
-        for k in range(1, num_prefs + 1):
-            met_k = model.addVar(vtype="BINARY", name=f"{s1}_at_least_{k}_prefs")
-            model.addCons(num_satisfied >= k - (1 - met_k) * num_prefs)
-            model.addCons(num_satisfied <= num_prefs - (1 - met_k))
-
-            all_layer_vars.append((k, met_k))
-
-    return all_layer_vars
 
 # HARD CONSTRAINTS
 def add_fairness_constraints(model, x, students, teachers, preferences, min_prefs_per_kid):

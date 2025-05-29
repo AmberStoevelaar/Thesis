@@ -1,5 +1,6 @@
 import pandas as pd
 import os
+import json
 
 def get_preferences_satisfied_per_student(df):
     columns = ['Preference 1', 'Preference 2', 'Preference 3', 'Preference 4', 'Preference 5']
@@ -43,7 +44,6 @@ def update_df(df):
 
     return df
 
-
 def create_teacher_student_df_from_df(df):
     teacher_groups = df.groupby('Assigned Group')['Student'].apply(list).to_dict()
 
@@ -58,6 +58,53 @@ def create_teacher_student_df_from_df(df):
 
     return pd.DataFrame(padded)
 
+def prettify_subcategory(category, subcat):
+    if category == "Gender":
+        if subcat.lower() == "boy":
+            return "Boys"
+        elif subcat.lower() == "girl":
+            return "Girls"
+        else:
+            return subcat
+    elif category == "Grade":
+        return f"Group {subcat}"
+    elif category == "Extra Care":
+        if subcat.lower() == "yes":
+            return "Extra Care"
+    elif category == "Behavior":
+        if subcat.lower() == "yes":
+            return "Behavior"
+    else:
+        return subcat
+
+def create_balance_df(evaluation):
+    data = {}
+    group_names = list(evaluation['group_sizes'].keys())
+
+    group_sizes_row = [evaluation['group_sizes'][group] for group in group_names]
+    data["Group Size"] = group_sizes_row
+
+    for category, subcats in evaluation['group_balance'].items():
+        for subcat, group_info in subcats.items():
+            if subcat.lower() == "no":
+                # Skip all 'No' subcategories entirely
+                continue
+
+            col_name = prettify_subcategory(category, subcat)
+            if col_name is None:
+                continue
+
+            # Collect counts per group
+            counts = []
+            for group in group_names:
+                counts.append(group_info.get(group, {}).get('count', 0))
+            data[col_name] = counts
+
+    # df = pd.DataFrame(data, columns=group_names).T
+    df = pd.DataFrame.from_dict(data, orient='index', columns=group_names)
+
+    return df
+
 
 
 
@@ -68,6 +115,11 @@ def save_to_excel(df, school, method, timestamp):
     # Create a directory for the results if it doesn't exist
     solution_folder = os.path.join("data/results", school, method, "solutions")
     os.makedirs(solution_folder, exist_ok=True)
+
+    # Load evaluation
+    eval_path = os.path.join("data/results", school, method, "evaluation", f"{method}_{timestamp}.json")
+    with open(eval_path, 'r') as f:
+        evaluation = json.load(f)
 
     filename = os.path.join(solution_folder, f"{method}_{timestamp}.xlsx")
 
@@ -80,7 +132,9 @@ def save_to_excel(df, school, method, timestamp):
             teacher_df = create_teacher_student_df_from_df(df)
             teacher_df.to_excel(writer, index=False, sheet_name='Groups')
 
-
+        # sheet 3: balance
+        balance_df = create_balance_df(evaluation)
+        balance_df.to_excel(writer, sheet_name='Group details')
 
 
 

@@ -7,6 +7,21 @@ from datetime import datetime
 import pandas as pd
 from help_functions import create_preference_matrix, read_dfs, read_variables
 
+def estimated_max_prefs(preferences, students, teachers):
+    # Sum the total number of peer preferences, scaled by how many teachers
+    return sum(preferences.loc[s].sum() * len(teachers) for s in students) or 1
+
+def estimated_max_balance_penalty(data, attributes_to_balance, teachers):
+    # Maximum possible deviation if all students of a type go to one teacher
+    total_penalty = 0
+    num_teachers = len(teachers)
+    for attr in attributes_to_balance:
+        counts = data.info_students[attr].value_counts()
+        for value_count in counts.values:
+            ideal = value_count / num_teachers
+            total_penalty += abs(value_count - ideal)
+    return total_penalty or 1
+
 
 def add_objective(model, x, students, teachers, data, variables):
     preferences = create_preference_matrix(data, variables)
@@ -30,23 +45,18 @@ def add_objective(model, x, students, teachers, data, variables):
         attributes_to_balance.append('Behavior')
 
     balance_penalty_terms = add_balance(model, x, attributes_to_balance, teachers, data)
-    fairness_layers = add_fairness_layers(model, x, students, teachers, preferences)
 
-    fairness_terms = []
-    max_k = max(k for k, _ in fairness_layers) if fairness_layers else 1
-    # Exponential weighting (satisfying higher k's matters more)
-    for k, met_k in fairness_layers:
-        weight = 10 ** (max_k - k)
-        fairness_terms.append(weight * met_k)
+    # Compute estimated maxima outside the model
+    preference_scale = 1 / max(1, estimated_max_prefs(preferences, students, teachers))
+    balance_scale = 1 / max(1, estimated_max_balance_penalty(data, attributes_to_balance, teachers))
 
-    # Define objective weights
-    balance_weight = 1
-    fairness_weight = 1
+    # Apply scaling to weights
+    preference_weight = 2 * preference_scale
+    balance_weight = 1 * balance_scale
 
-    # Add the objective to the model
-    model.Maximize(sum(preference_terms)
-        + (fairness_weight * sum(fairness_terms))
-        -( balance_weight * sum(balance_penalty_terms))
+    model.Maximize(
+        preference_weight * sum(preference_terms)
+        - balance_weight * sum(balance_penalty_terms)
     )
 
     return model
@@ -92,45 +102,6 @@ def add_balance(model, x, attributes, teachers, data):
                 balance_penalty_terms.append(under_dev)
 
     return balance_penalty_terms
-
-def add_fairness_layers(model, x, students, teachers, preferences):
-    all_layer_vars = []
-
-    for s1 in students:
-        preferred_students = [s2 for s2 in students if s1 != s2 and preferences.loc[s1, s2] == 1]
-        num_prefs = len(preferred_students)
-
-        if num_prefs == 0:
-            continue
-
-        satisfied_bools = []
-        # Get the preferred students for this student
-        for s2 in preferred_students:
-            both_assigned = model.NewBoolVar(f"satisfied_{s1}_{s2}")
-            both_assigned_per_teacher = [
-                model.NewBoolVar(f"{s1}_{s2}_with_{t}") for t in teachers
-            ]
-            for i, t in enumerate(teachers):
-                model.AddBoolAnd([x[s1, t], x[s2, t]]).OnlyEnforceIf(both_assigned_per_teacher[i])
-                model.AddBoolOr([x[s1, t].Not(), x[s2, t].Not()]).OnlyEnforceIf(both_assigned_per_teacher[i].Not())
-
-            model.AddBoolOr(both_assigned_per_teacher).OnlyEnforceIf(both_assigned)
-            model.AddBoolAnd([v.Not() for v in both_assigned_per_teacher]).OnlyEnforceIf(both_assigned.Not())
-
-            satisfied_bools.append(both_assigned)
-
-        # Count the number of satisfied preferences for this student
-        num_satisfied = model.NewIntVar(0, num_prefs, f"num_satisfied_{s1}")
-        model.Add(num_satisfied == sum(satisfied_bools))
-
-        # Preference layers: has at least k prefs satisfied?
-        for k in range(1, num_prefs + 1):
-            met_k = model.NewBoolVar(f"{s1}_at_least_{k}_prefs")
-            model.Add(num_satisfied >= k).OnlyEnforceIf(met_k)
-            model.Add(num_satisfied < k).OnlyEnforceIf(met_k.Not())
-            all_layer_vars.append((k, met_k))
-
-    return all_layer_vars
 
 # HARD CONSTRAINTS
 def add_balance_constraints(model, attribute, deviation, x, teachers, data):
@@ -323,28 +294,31 @@ def format_solution(solution):
     return df
 
 
-def run_cp(school, processed_data_folder, timelimit, min_prefs_per_kid, deviation):
-    folder ='data/results'
+def run_cp(school, processed_data_folder, timelimit, min_prefs_start, deviation):
+    folder = 'data/results'
     timestamp = datetime.now().strftime("%d-%m_%H:%M")
     results_folder = os.path.join(folder, school, "CP")
 
-    fallback_configs = [
-        (min_prefs_per_kid, deviation),
-        (0, deviation),
-        (min_prefs_per_kid, 1.0),
-        (0, 1.0),
-    ]
-
-    for min_prefs, dev in fallback_configs:
-        print(f"New run. Trying: min_prefs_per_kid={min_prefs}, deviation={dev}")
-        model, x = create_model(school, processed_data_folder, min_prefs, dev)
-        solution = solve_model(model, x, results_folder, timestamp, timelimit, min_prefs, dev)
+    # 1. Try decreasing min_prefs from 5 to 0 with normal deviation
+    for min_prefs in reversed(range(min_prefs_start + 1)):
+        print(f"Phase 1: Trying min_prefs_per_kid={min_prefs}, deviation={deviation}")
+        model, x = create_model(school, processed_data_folder, min_prefs, deviation)
+        solution = solve_model(model, x, results_folder, timestamp, timelimit, min_prefs, deviation)
         if solution:
             df = format_solution(solution)
             return df, timestamp
 
-    else:
-        print("No solution found.")
-        return None, timestamp
+    # 2. Try again with no balance constraint (deviation = 1.0)
+    for min_prefs in reversed(range(min_prefs_start + 1)):
+        print(f"Phase 2: Trying min_prefs_per_kid={min_prefs}, deviation=1.0 (no balance constraint)")
+        model, x = create_model(school, processed_data_folder, min_prefs, 1.0)
+        solution = solve_model(model, x, results_folder, timestamp, timelimit, min_prefs, 1.0)
+        if solution:
+            df = format_solution(solution)
+            return df, timestamp
+
+    print("No solution found in any configuration.")
+    return None, timestamp
+
 
 
