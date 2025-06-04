@@ -3,27 +3,26 @@ import math
 import os
 import csv
 import time
+import sys
 from datetime import datetime
 import pandas as pd
-from help_functions import create_preference_matrix, read_dfs, read_variables
+from helpers import create_preference_matrix, read_dfs, read_variables, estimated_max_prefs, estimated_max_balance_penalty, estimated_max_fairness
 
-def estimated_max_prefs(preferences, students, teachers):
-    # Sum the total number of peer preferences, scaled by how many teachers
-    return sum(preferences.loc[s].sum() * len(teachers) for s in students) or 1
+def create_initial_model(students, teachers, data, variables, min_prefs_per_kid):
+    model = cp_model.CpModel()
 
-def estimated_max_balance_penalty(data, attributes_to_balance, teachers):
-    # Maximum possible deviation if all students of a type go to one teacher
-    total_penalty = 0
-    num_teachers = len(teachers)
-    for attr in attributes_to_balance:
-        counts = data.info_students[attr].value_counts()
-        for value_count in counts.values:
-            ideal = value_count / num_teachers
-            total_penalty += abs(value_count - ideal)
-    return total_penalty or 1
+    # Decision variables
+    # x[s][t] = 1 if student s assigned to teacher t
+    x = {}
+    for s in students:
+        for t in teachers:
+            x[s, t] = model.NewBoolVar(f'x_{s}_{t}')
 
+    model = add_objective(model, x, students, teachers, data, variables, min_prefs_per_kid)
 
-def add_objective(model, x, students, teachers, data, variables):
+    return model, x
+
+def add_objective(model, x, students, teachers, data, variables, min_prefs_per_kid):
     preferences = create_preference_matrix(data, variables)
     preference_terms = []
 
@@ -36,6 +35,7 @@ def add_objective(model, x, students, teachers, data, variables):
                 for t in teachers:
                     # Create a helper variable that is 1 if both students are assigned to teacher t
                     both_assigned = model.NewBoolVar(f"same_{s1}_{s2}_{t}")
+                    # Var is only 1 if both students are assigned to the same teacher, otherwise at least one is 0
                     model.AddBoolAnd([x[s1, t], x[s2, t]]).OnlyEnforceIf(both_assigned)
                     model.AddBoolOr([x[s1, t].Not(), x[s2, t].Not()]).OnlyEnforceIf(both_assigned.Not())
                     preference_terms.append(weight * both_assigned)
@@ -46,34 +46,34 @@ def add_objective(model, x, students, teachers, data, variables):
 
     balance_penalty_terms = add_balance(model, x, attributes_to_balance, teachers, data)
 
-    # Compute estimated maxima outside the model
+    fairness_layers = add_fairness_layers(model, x, students, teachers, preferences)
+    fairness_terms = []
+    # Get highest number of preferences given by any student
+    max_k = max(k for k, _ in fairness_layers) if fairness_layers else 1
+    for k, met_k in fairness_layers:
+        # Each layer is weighted exponentially based on how many preferences are met
+        # Higher k means more preferences met, so weight is lower to focus more on
+        # improving fairness for students with fewer preferences met first
+        weight = 10 ** (max_k - k)
+        fairness_terms.append(weight * met_k)
+
+    # Scale each objective by its estimated max value to normalize
     preference_scale = 1 / max(1, estimated_max_prefs(preferences, students, teachers))
     balance_scale = 1 / max(1, estimated_max_balance_penalty(data, attributes_to_balance, teachers))
+    fairness_scale = 1 / max(1, estimated_max_fairness(fairness_layers))
 
     # Apply scaling to weights
-    preference_weight = 2 * preference_scale
+    preference_weight = 1 * preference_scale
     balance_weight = 1 * balance_scale
+    fairness_weight = 2 * fairness_scale
 
     model.Maximize(
         preference_weight * sum(preference_terms)
         - balance_weight * sum(balance_penalty_terms)
+        + fairness_weight * sum(fairness_terms)
     )
 
     return model
-
-def create_initial_model(students, teachers, data, variables):
-    model = cp_model.CpModel()
-
-    # Decision variables
-    # x[s][t] = 1 if student s assigned to teacher t
-    x = {}
-    for s in students:
-        for t in teachers:
-            x[s, t] = model.NewBoolVar(f'x_{s}_{t}')
-
-    model = add_objective(model, x, students, teachers, data, variables)
-
-    return model, x
 
 # SOFT CONSTRAINTS
 def add_balance(model, x, attributes, teachers, data):
@@ -97,28 +97,73 @@ def add_balance(model, x, attributes, teachers, data):
                 over_dev = model.NewIntVar(0, max_students, f"over_dev_{t}_{attribute}_{cat}")
                 under_dev = model.NewIntVar(0, max_students, f"under_dev_{t}_{attribute}_{cat}")
 
+                # Measures deviation from target by splitting into over- and under-assignment penalties
                 model.Add(assigned_count - int(target) == over_dev - under_dev)
                 balance_penalty_terms.append(over_dev)
                 balance_penalty_terms.append(under_dev)
 
     return balance_penalty_terms
 
+def add_fairness_layers(model, x, students, teachers, preferences):
+    all_layer_vars = []
+
+    for s1 in students:
+        preferred_students = [s2 for s2 in students if s1 != s2 and preferences.loc[s1, s2] == 1]
+        num_prefs = len(preferred_students)
+
+        # Skip students with no preferences
+        if num_prefs == 0:
+            continue
+
+        satisfied_bools = []
+        for s2 in preferred_students:
+            # Create var that is 1 if both students are assigned to the same teacher
+            both_assigned = model.NewBoolVar(f"satisfied_{s1}_{s2}")
+            both_assigned_per_teacher = [model.NewBoolVar(f"{s1}_{s2}_with_{t}") for t in teachers]
+            for i, t in enumerate(teachers):
+                # Check if both students are assigned to a teacher
+                model.AddBoolAnd([x[s1, t], x[s2, t]]).OnlyEnforceIf(both_assigned_per_teacher[i])
+                model.AddBoolOr([x[s1, t].Not(), x[s2, t].Not()]).OnlyEnforceIf(both_assigned_per_teacher[i].Not())
+
+            # Var is only 1 if at least one of the together_per_teacher vars is 1
+            model.AddBoolOr(both_assigned_per_teacher).OnlyEnforceIf(both_assigned)
+            model.AddBoolAnd([v.Not() for v in both_assigned_per_teacher]).OnlyEnforceIf(both_assigned.Not())
+            satisfied_bools.append(both_assigned)
+
+        # Count the number of satisfied preferences for this student
+        num_satisfied = model.NewIntVar(0, num_prefs, f"num_satisfied_{s1}")
+        model.Add(num_satisfied == sum(satisfied_bools))
+
+        # Preference layers: has at least k prefs satisfied?
+        for k in range(1, num_prefs + 1):
+            # Create var for each possible k to track if at least k preferences are met
+            met_k = model.NewBoolVar(f"{s1}_at_least_{k}_prefs")
+            # If met_k is 1 then at least k preferences should be met
+            model.Add(num_satisfied >= k).OnlyEnforceIf(met_k)
+            # If met_k is 0 then less than k preferences should be met
+            model.Add(num_satisfied < k).OnlyEnforceIf(met_k.Not())
+            all_layer_vars.append((k, met_k))
+
+    return all_layer_vars
+
 # HARD CONSTRAINTS
 def add_balance_constraints(model, attribute, deviation, x, teachers, data):
+    # Get the unique categories for the attribute
     categories = data.info_students[attribute].unique()
+    # Get target per teacher for each category
     category_students = {cat: data.info_students[data.info_students[attribute] == cat]['Student'].tolist() for cat in categories}
     target_per_teacher = {cat: len(category_students[cat]) / len(teachers) for cat in categories}
 
     for t in teachers:
         for cat in categories:
+            # Calculate the lower and upper bounds for the number of students in this category
             lower_bound = math.floor((1 - deviation) * target_per_teacher[cat])
             upper_bound = math.ceil((1 + deviation) * target_per_teacher[cat])
-            # print(f"Adding balance constraints for {cat} in teacher {t}: [{lower_bound}, {upper_bound}]")
 
             # Get the list of students in this category
             students_in_cat = category_students[cat]
 
-            # Add the balancing constraints for this category
+            # Add the balancing constraints for this category and teacher
             model.Add(sum(x[s, t] for s in students_in_cat) >= lower_bound)
             model.Add(sum(x[s, t] for s in students_in_cat) <= upper_bound)
 
@@ -126,20 +171,29 @@ def add_balance_constraints(model, attribute, deviation, x, teachers, data):
 
 def add_fairness_constraints(model, x, students, teachers, preferences, min_prefs_per_kid):
     for s1 in students:
+        # Only add constraints if the minimum preference is set greater than 0
         if min_prefs_per_kid > 0:
             preferred_students = [s2 for s2 in students if s1 != s2 and preferences.loc[s1, s2] == 1]
 
+            # Continue if s1 has any preferred students
             if preferred_students:
                 together_vars = []
 
                 for s2 in preferred_students:
-                    # Add the constraint: together = 1 if both students are assigned to the same teacher
-                    together = model.NewBoolVar(f"together_{s1}_{s2}")
-                    for t in teachers:
-                        model.AddImplication(x[s1, t], x[s2, t]).OnlyEnforceIf(together)
-                    together_vars.append(together)
+                    # Create var that is 1 if both students are assigned to the same teacher
+                    both_assigned = model.NewBoolVar(f"satisfied_{s1}_{s2}")
+                    both_assigned_per_teacher = [model.NewBoolVar(f"{s1}_{s2}_with_{t}") for t in teachers]
+                    for i, t in enumerate(teachers):
+                        # Check if both students are assigned to a teacher
+                        model.AddBoolAnd([x[s1, t], x[s2, t]]).OnlyEnforceIf(both_assigned_per_teacher[i])
+                        model.AddBoolOr([x[s1, t].Not(), x[s2, t].Not()]).OnlyEnforceIf(both_assigned_per_teacher[i].Not())
 
-                # Require that at least min preferences are satisfied
+                    # Var is only 1 if at least one of the together_per_teacher vars is 1
+                    model.AddBoolOr(both_assigned_per_teacher).OnlyEnforceIf(both_assigned)
+                    model.AddBoolAnd([v.Not() for v in both_assigned_per_teacher]).OnlyEnforceIf(both_assigned.Not())
+                    together_vars.append(both_assigned)
+
+                # Require that the sum of 'together' variables is at least min_prefs_per_kid for student s1
                 model.Add(sum(together_vars) >= min_prefs_per_kid)
 
     return model
@@ -202,7 +256,7 @@ def create_model(school, processed_data_folder, min_prefs_per_kid, deviation):
     teachers = data.info_teachers['Teacher'].tolist()
 
     # Initialize model
-    model, x = create_initial_model(students, teachers, data, variables)
+    model, x = create_initial_model(students, teachers, data, variables, min_prefs_per_kid)
 
     # Add hard constraints
     preference_matrix = create_preference_matrix(data, variables)
@@ -210,7 +264,7 @@ def create_model(school, processed_data_folder, min_prefs_per_kid, deviation):
 
     return model, x
 
-
+# RUNNING THE MODEL
 class ObjectiveLogger(cp_model.CpSolverSolutionCallback):
     def __init__(self, results_folder, timestamp, timelimit, min_prefs_per_kid, deviation):
         super().__init__()
@@ -268,10 +322,11 @@ class ObjectiveLogger(cp_model.CpSolverSolutionCallback):
                 writer.writerow(["Status", status_str])
 
 def solve_model(model, x, results_folder, timestamp, timelimit, min_prefs_per_kid, deviation):
-    # Create a solver and solve
     solver = cp_model.CpSolver()
     solver.parameters.max_time_in_seconds = timelimit
     solver.parameters.log_search_progress = True
+
+    # Set seed to ensure reproducibility and enable single-threaded search
     solver.parameters.random_seed = 42
     solver.parameters.num_search_workers = 1
 
@@ -280,9 +335,7 @@ def solve_model(model, x, results_folder, timestamp, timelimit, min_prefs_per_ki
     status = solver.SolveWithSolutionCallback(model, logger)
     logger.EndSearch(solver.StatusName(status))
 
-    print(f"Final status: {solver.StatusName(status)}")
-    print(f"Final objective reported by solver: {solver.ObjectiveValue()}")
-
+    # Check if a solution was found
     if status in (cp_model.FEASIBLE, cp_model.OPTIMAL):
         solution = {key: solver.Value(var) for key, var in x.items()}
         return solution
@@ -292,7 +345,6 @@ def format_solution(solution):
     df = pd.DataFrame(assignments, columns=['Student', 'Teacher'])
     df = df.sort_values(by='Teacher')
     return df
-
 
 def run_cp(school, processed_data_folder, timelimit, min_prefs_start, deviation):
     folder = 'data/results'
@@ -319,6 +371,3 @@ def run_cp(school, processed_data_folder, timelimit, min_prefs_start, deviation)
 
     print("No solution found in any configuration.")
     return None, timestamp
-
-
-

@@ -70,7 +70,7 @@ def plot_satisfaction_rate(stats):
     ax.grid(True, axis='y', linestyle='--', alpha=0.5)
     plt.tight_layout()
 
-    output_path = os.path.join("plots", "satisfaction_rate.png")
+    output_path = os.path.join("final_results/plots", "satisfaction_rate.png")
     plt.savefig(output_path, bbox_inches='tight')
 
     plt.show()
@@ -130,7 +130,7 @@ def plot_minimum_preferences(stats):
     ax.grid(True, axis='y', linestyle='--', alpha=0.5)
     plt.tight_layout()
 
-    output_path = os.path.join("plots", "minimum_preferences.png")
+    output_path = os.path.join("final_results/plots", "minimum_preferences.png")
     plt.savefig(output_path, bbox_inches='tight')
 
     plt.show()
@@ -138,7 +138,7 @@ def plot_minimum_preferences(stats):
 
 if __name__ == "__main__":
     folder = 'final_results'
-    os.makedirs("plots", exist_ok=True)
+    os.makedirs(os.path.join(folder, 'plots'), exist_ok=True)
 
     satisfaction_rate_stats = average_satisfaction(folder)
     plot_satisfaction_rate(satisfaction_rate_stats)

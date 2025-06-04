@@ -4,7 +4,7 @@ import warnings
 import shutil
 
 from validate_data import validate_grouping_data
-from help_functions import InputData, read_variables
+from helpers import InputData, read_variables
 
 warnings.filterwarnings('ignore', category=UserWarning, message='.*Data Validation extension is not supported.*')
 

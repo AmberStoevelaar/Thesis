@@ -107,9 +107,8 @@ def plot(folder):
 
 if __name__ == "__main__":
     folder = 'final_results'
-    os.makedirs("plots", exist_ok=True)
+    os.makedirs(os.path.join(folder, 'plots'), exist_ok=True)
 
-    folder = 'final_results'
     school = "Vorige"
     filename = "CP_23-05_12:15.json"
 

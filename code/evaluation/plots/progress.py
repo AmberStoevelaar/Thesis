@@ -74,7 +74,7 @@ def plot_results(data, school):
     # Compact legend
     plt.legend(loc='upper right', fontsize=7, frameon=False, handlelength=2)
 
-    output_path = os.path.join("plots", f"{school}_progress.png")
+    output_path = os.path.join("final_results/plots", f"{school}_progress.png")
     plt.savefig(output_path, bbox_inches='tight')
 
     plt.show()
@@ -84,7 +84,7 @@ def plot_results(data, school):
 if __name__ == "__main__":
     school = sys.argv[1]
     folder = 'final_results'
-    os.makedirs("plots", exist_ok=True)
+    os.makedirs(os.path.join(folder, 'plots'), exist_ok=True)
 
     files = get_file_paths(folder, school)
     data = [parse_result_file(f) for f in files if parse_result_file(f) is not None]

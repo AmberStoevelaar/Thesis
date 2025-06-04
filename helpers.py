@@ -1,21 +1,5 @@
 import pandas as pd
 import os
-import numpy as np
-
-def read_df(school, processed_data_folder, filename):
-    path = os.path.join(processed_data_folder, school, filename)
-    return pd.read_csv(path)
-
-def read_group_preferences(school, processed_data_folder):
-    df = read_df(school, processed_data_folder, 'group_preferences.csv')
-    n_students, n_groups, min_group_size, max_extra_care = df.iloc[0]
-
-    # Check if all values exist
-    if pd.isnull(n_students) or pd.isnull(n_groups) or pd.isnull(min_group_size) or pd.isnull(max_extra_care):
-        raise ValueError("One or more values in group preferences are missing.")
-
-    return n_students, n_groups, min_group_size, max_extra_care
-
 
 class InputData:
     def __init__(self, group_preferences, info_students, info_teachers, constraints_students, constraints_teachers, current_groups):
@@ -33,6 +17,20 @@ class Groupvariables:
         self.min_group_size = min_group_size
         self.max_extra_care = max_extra_care
         self.max_group_size = max_group_size
+
+def read_df(school, processed_data_folder, filename):
+    path = os.path.join(processed_data_folder, school, filename)
+    return pd.read_csv(path)
+
+def read_group_preferences(school, processed_data_folder):
+    df = read_df(school, processed_data_folder, 'group_preferences.csv')
+    n_students, n_groups, min_group_size, max_extra_care = df.iloc[0]
+
+    # Check if all values exist
+    if pd.isnull(n_students) or pd.isnull(n_groups) or pd.isnull(min_group_size) or pd.isnull(max_extra_care):
+        raise ValueError("One or more values in group preferences are missing.")
+
+    return n_students, n_groups, min_group_size, max_extra_care
 
 def read_dfs(school, processed_data_folder):
     return InputData(
@@ -88,4 +86,23 @@ def create_preference_matrix(data, variables):
 
     return preference_matrix
 
+# MODELS
+def estimated_max_prefs(preferences, students, teachers):
+    # Sum the total number of peer preferences, scaled by how many teachers
+    return sum(preferences.loc[s].sum() * len(teachers) for s in students) or 1
 
+def estimated_max_fairness(fairness_layers):
+    # Exponentially weighted total fairness score across all layers
+    max_k = max((k for k, _ in fairness_layers), default=1)
+    return sum(10 ** (max_k - k) for k, _ in fairness_layers) or 1
+
+def estimated_max_balance_penalty(data, attributes_to_balance, teachers):
+    # Maximum possible deviation if all students of a type go to one teacher
+    total_penalty = 0
+    num_teachers = len(teachers)
+    for attr in attributes_to_balance:
+        counts = data.info_students[attr].value_counts()
+        for value_count in counts.values:
+            ideal = value_count / num_teachers
+            total_penalty += abs(value_count - ideal)
+    return total_penalty or 1

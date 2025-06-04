@@ -97,7 +97,7 @@ def plot(summary):
     autolabel(rects2)
 
     plt.tight_layout()
-    plt.savefig('plots/time_per_method.png', dpi=300)
+    plt.savefig('final_results/plots/time_per_method.png', dpi=300)
     plt.show()
 
 
@@ -108,7 +108,7 @@ def plot(summary):
 
 if __name__ == "__main__":
     folder = 'final_results'
-    os.makedirs("plots", exist_ok=True)
+    os.makedirs(os.path.join(folder, 'plots'), exist_ok=True)
 
     summary = summarize_by_method(folder)
     print(summary)

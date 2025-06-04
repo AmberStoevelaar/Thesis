@@ -1,9 +1,0 @@
-VOOR EVALUATIE:
-Solution quality:
-* Total prefs / objective
-* Avg prefs
-* Satisfaction rate?
-
-Computational efficiency:
-* CPU time until optimal / good enough
-* CPU time until feasible solution
