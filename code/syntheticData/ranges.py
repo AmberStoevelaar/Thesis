@@ -1,7 +1,8 @@
 import os
 import pandas as pd
+import numpy as np
 
-def get_school_paths(folder):
+def get_school_paths(folder, skip_schools):
     all_schools = []
     for school in os.listdir(folder):
         if school in skip_schools:
@@ -83,18 +84,41 @@ def get_constraints(schools):
 
     return constraints
 
+def get_min_group_size_ratios(schools):
+    ratios = []
+    for school in schools:
+        students_df = get_df(school, 'info_students.csv')
+        groups_df = get_df(school, 'group_preferences.csv')
+
+        if students_df is None or groups_df is None:
+            continue
+
+        num_students = len(students_df)
+        min_group_size = groups_df.iloc[0]['Minimum Group Size']
+
+        ratio = min_group_size / num_students if num_students > 0 else 0
+        ratios.append(ratio)
+    return ratios
+
 def get_group_info(schools):
-    group_info = {"min_group_size": [], "max_extra_care": []}
+    group_info = {"min_group_size_ratio": [], "max_extra_care_ratio": [], "num_groups_ratio": []}
 
     for school in schools:
         # Load group data from each school
         df = get_df(school, 'group_preferences.csv')
+        num_students = df["Number of Students"].iloc[0]
 
         # Get minimum group size
-        group_info["min_group_size"].append(df.iloc[0]['Minimum Group Size'])
+        min_group_size = df.iloc[0]['Minimum Group Size']
+        group_info["min_group_size_ratio"].append(min_group_size / num_students if num_students > 0 else 0)
 
         # Get maximum number of students with extra care in a group
-        group_info["max_extra_care"].append(df.iloc[0]["Maximum Number Extra Care"])
+        max_extra_care = df.iloc[0]['Maximum Number Extra Care']
+        group_info["max_extra_care_ratio"].append(max_extra_care / num_students if num_students > 0 else 0)
+
+        # Get number of groups
+        num_groups = df.iloc[0]['Number of Groups']
+        group_info["num_groups_ratio"].append(num_groups / num_students if num_students > 0 else 0)
 
     return group_info
 
@@ -109,14 +133,28 @@ def get_all_parameters(schools):
     parameters.update(constraints)
     parameters.update(group_info)
 
-    print(parameters)
     return parameters
+
+def compute_summary_stats(schools):
+    parameters = get_all_parameters(schools)
+    summary_stats = {}
+
+    for key, values in parameters.items():
+        arr = np.array(values)
+        summary_stats[key] = {
+            "min": np.min(arr),
+            "max": np.max(arr),
+            "mean": np.mean(arr)
+        }
+    return summary_stats
 
 if __name__ == "__main__":
     folder = 'data/processed_data'
 
     skip_schools = ["school_1", "school_2", "school_3", "school_4", "school_5", "test_school", ".DS_Store"]
-    schools = get_school_paths(folder)
+    schools = get_school_paths(folder, skip_schools=skip_schools)
 
-    parameters = get_all_parameters(schools)
-
+    stats = compute_summary_stats(schools)
+    print("Summary Statistics:")
+    for key, stat in stats.items():
+        print(f"{key}: min={stat['min']:.2f}, max={stat['max']:.2f}, mean={stat['mean']:.2f}")
