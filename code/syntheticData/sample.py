@@ -118,6 +118,10 @@ def info_teachers(teacher_ids, output_path):
               ["Teacher"],
               [[t] for t in teacher_ids])
 
+def current_groups(output_path):
+    write_csv(os.path.join(output_path, "current_groups.csv"),
+            ["Student", "Teacher"],
+            [])
 
 def generate_synthetic_school(stats, num_students, output_path, seed):
     os.makedirs(output_path, exist_ok=True)
@@ -132,6 +136,7 @@ def generate_synthetic_school(stats, num_students, output_path, seed):
     # Generate number of groups
     num_groups_ratio = sample_param(stats["num_groups_ratio"])
     num_groups = math.ceil(num_students * num_groups_ratio)
+    print(f"Generating {num_students} students in {num_groups} groups")
 
     # Generate teacher
     teacher_ids = [id_format("T", i+1) for i in range(num_groups)]
@@ -151,6 +156,9 @@ def generate_synthetic_school(stats, num_students, output_path, seed):
     # info_teachers.csv
     info_teachers(teacher_ids, output_path)
 
+    # current_groups.csv
+    current_groups(output_path)
+
 if __name__ == "__main__":
     folder = 'data/processed_data'
     skip_schools = ["school_1", "school_2", "school_3", "school_4", "school_5", "test_school", ".DS_Store"]
@@ -159,7 +167,7 @@ if __name__ == "__main__":
     stats = compute_summary_stats(schools)
     num_students = [45, 57, 63, 69, 75, 82, 88, 94, 100]
 
-    base_seed = 42
+    base_seed = 21
     for i in num_students:
         # Different seed for each school based on number of students
         seed = base_seed + i
