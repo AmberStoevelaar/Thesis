@@ -5,7 +5,7 @@ import numpy as np
 def get_school_paths(folder, skip_schools):
     all_schools = []
     for school in os.listdir(folder):
-        if school in skip_schools:
+        if school in skip_schools or school.startswith("synthetic_school"):
             continue
 
         all_schools.append(os.path.join(folder, school))
@@ -54,10 +54,6 @@ def get_constraints(schools):
     constraints = {"peer_incl": [], "peer_excl": [], "teacher_incl": [], "teacher_excl": []}
 
     for school in schools:
-        # Get Include density (number of together constraints out of total possible pairs)
-        num_students = len(get_df(school, 'info_students.csv'))
-        total_possible_student_pairs = num_students * (num_students - 1) // 2
-
         # Load student data from each school
         df = get_df(school, 'constraints_students.csv')
 
@@ -65,23 +61,18 @@ def get_constraints(schools):
         peer_incl = (df['Together'] == "Yes").sum()
         peer_excl = (df['Together'] == "No").sum()
 
-        constraints["peer_incl"].append(peer_incl / total_possible_student_pairs)
-        constraints["peer_excl"].append(peer_excl / total_possible_student_pairs)
+        constraints["peer_incl"].append(peer_incl)
+        constraints["peer_excl"].append(peer_excl)
 
         # Load teacher data from each school
         df = get_df(school, 'constraints_teachers.csv')
         num_teachers = len(df)
-        total_possible_teacher_pairs = num_students * num_teachers
 
         # Get number of teacher inclusion and exclusion constraints
         teacher_incl = (df['Together'] == "Yes").sum()
         teacher_excl = (df['Together'] == "No").sum()
-
-        constraints["teacher_incl"].append(
-            teacher_incl / total_possible_teacher_pairs if total_possible_teacher_pairs else 0)
-        constraints["teacher_excl"].append(
-            teacher_excl / total_possible_teacher_pairs if total_possible_teacher_pairs else 0)
-
+        constraints["teacher_incl"].append(teacher_incl)
+        constraints["teacher_excl"].append(teacher_excl)
     return constraints
 
 def get_min_group_size_ratios(schools):
@@ -114,7 +105,10 @@ def get_group_info(schools):
 
         # Get maximum number of students with extra care in a group
         max_extra_care = df.iloc[0]['Maximum Number Extra Care']
-        group_info["max_extra_care_ratio"].append(max_extra_care / num_students if num_students > 0 else 0)
+        info_df = get_df(school, 'info_students.csv')
+        num_extra_care_kids = (info_df["Extra Care"] == "Yes").sum()
+        group_info["max_extra_care_ratio"].append(max_extra_care / num_extra_care_kids if num_extra_care_kids > 0 else 0)
+        # group_info["max_extra_care_ratio"].append(max_extra_care / num_students if num_students > 0 else 0)
 
         # Get number of groups
         num_groups = df.iloc[0]['Number of Groups']
@@ -147,14 +141,3 @@ def compute_summary_stats(schools):
             "mean": np.mean(arr)
         }
     return summary_stats
-
-if __name__ == "__main__":
-    folder = 'data/processed_data'
-
-    skip_schools = ["school_1", "school_2", "school_3", "school_4", "school_5", "test_school", ".DS_Store"]
-    schools = get_school_paths(folder, skip_schools=skip_schools)
-
-    stats = compute_summary_stats(schools)
-    print("Summary Statistics:")
-    for key, stat in stats.items():
-        print(f"{key}: min={stat['min']:.2f}, max={stat['max']:.2f}, mean={stat['mean']:.2f}")
