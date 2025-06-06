@@ -3,12 +3,11 @@ import math
 import os
 import csv
 import time
-import sys
 from datetime import datetime
 import pandas as pd
 from helpers import create_preference_matrix, read_dfs, read_variables, estimated_max_prefs, estimated_max_balance_penalty, estimated_max_fairness
 
-def create_initial_model(students, teachers, data, variables, min_prefs_per_kid):
+def create_initial_model(students, teachers, data, variables):
     model = cp_model.CpModel()
 
     # Decision variables
@@ -18,34 +17,18 @@ def create_initial_model(students, teachers, data, variables, min_prefs_per_kid)
         for t in teachers:
             x[s, t] = model.NewBoolVar(f'x_{s}_{t}')
 
-    model = add_objective(model, x, students, teachers, data, variables, min_prefs_per_kid)
+    model = add_objective(model, x, students, teachers, data, variables)
 
     return model, x
 
-def add_objective(model, x, students, teachers, data, variables, min_prefs_per_kid):
-    preferences = create_preference_matrix(data, variables)
-    preference_terms = []
-
-    # Maximize student preferences
-    for s1 in students:
-        # Add weight to give more importance to students with less preferences
-        weight = 1 / max(1, preferences.loc[s1].sum())
-        for s2 in students:
-            if s1 != s2 and preferences.loc[s1, s2] > 0:
-                for t in teachers:
-                    # Create a helper variable that is 1 if both students are assigned to teacher t
-                    both_assigned = model.NewBoolVar(f"same_{s1}_{s2}_{t}")
-                    # Var is only 1 if both students are assigned to the same teacher, otherwise at least one is 0
-                    model.AddBoolAnd([x[s1, t], x[s2, t]]).OnlyEnforceIf(both_assigned)
-                    model.AddBoolOr([x[s1, t].Not(), x[s2, t].Not()]).OnlyEnforceIf(both_assigned.Not())
-                    preference_terms.append(weight * both_assigned)
-
+def add_objective(model, x, students, teachers, data, variables):
     attributes_to_balance = ['Gender', 'Grade', 'Extra Care']
     if 'Behavior' in data.info_students.columns:
         attributes_to_balance.append('Behavior')
 
     balance_penalty_terms = add_balance(model, x, attributes_to_balance, teachers, data)
 
+    preferences = create_preference_matrix(data, variables)
     fairness_layers = add_fairness_layers(model, x, students, teachers, preferences)
     fairness_terms = []
     # Get highest number of preferences given by any student
@@ -58,19 +41,16 @@ def add_objective(model, x, students, teachers, data, variables, min_prefs_per_k
         fairness_terms.append(weight * met_k)
 
     # Scale each objective by its estimated max value to normalize
-    preference_scale = 1 / max(1, estimated_max_prefs(preferences, students, teachers))
     balance_scale = 1 / max(1, estimated_max_balance_penalty(data, attributes_to_balance, teachers))
     fairness_scale = 1 / max(1, estimated_max_fairness(fairness_layers))
 
     # Apply scaling to weights
-    preference_weight = 1 * preference_scale
-    balance_weight = 1 * balance_scale
-    fairness_weight = 2 * fairness_scale
+    balance_weight = 2 * balance_scale
+    fairness_weight = 1 * fairness_scale
 
     model.Maximize(
-        preference_weight * sum(preference_terms)
+        fairness_weight * sum(fairness_terms)
         - balance_weight * sum(balance_penalty_terms)
-        + fairness_weight * sum(fairness_terms)
     )
 
     return model
@@ -256,7 +236,7 @@ def create_model(school, processed_data_folder, min_prefs_per_kid, deviation):
     teachers = data.info_teachers['Teacher'].tolist()
 
     # Initialize model
-    model, x = create_initial_model(students, teachers, data, variables, min_prefs_per_kid)
+    model, x = create_initial_model(students, teachers, data, variables)
 
     # Add hard constraints
     preference_matrix = create_preference_matrix(data, variables)

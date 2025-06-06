@@ -1,6 +1,7 @@
 import os
 import pandas as pd
 import numpy as np
+import math
 
 def get_school_paths(folder, skip_schools):
     all_schools = []
@@ -86,8 +87,12 @@ def get_min_group_size_ratios(schools):
 
         num_students = len(students_df)
         min_group_size = groups_df.iloc[0]['Minimum Group Size']
+        num_groups = groups_df.iloc[0]['Number of Groups']
+        print(f"num groups {num_groups}")
+        max_group_size = math.ceil(num_students / num_groups)
 
-        ratio = min_group_size / num_students if num_students > 0 else 0
+        # ratio = min_group_size / num_students if num_students > 0 else 0
+        ratio = min_group_size / max_group_size
         ratios.append(ratio)
     return ratios
 

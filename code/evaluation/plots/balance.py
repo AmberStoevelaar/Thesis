@@ -55,10 +55,10 @@ def normalized_deviation(file):
 
 def total_deviations(folder):
     file_paths = get_file_paths(folder)
+    file_paths = [f for f in file_paths if not f.startswith(os.path.join(folder, 'plots'))]
 
     total_deviation = {}
     for file_path in file_paths:
-        print(f"filename: {file_path}")
         filename = file_path.split('/')[-1]
         method = filename.split('_')[0]
 
@@ -109,10 +109,9 @@ if __name__ == "__main__":
     folder = 'final_results'
     os.makedirs(os.path.join(folder, 'plots'), exist_ok=True)
 
-    school = "Vorige"
-    filename = "CP_23-05_12:15.json"
-
-    file_path = os.path.join(folder, school, 'evals', filename)
+    # school = "WegwijzerBB"
+    # filename = "CP_23-05_12:15.json"
+    # file_path = os.path.join(folder, school, 'evals', filename)
     plot(folder)
 
 

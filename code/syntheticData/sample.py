@@ -3,9 +3,17 @@ import csv
 import numpy as np
 import random
 import math
+import sys
 
 from distributions import create_dist
 from ranges import get_school_paths, compute_summary_stats
+
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+from preprocessing.validate_data import validate_grouping_data
+
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+from helpers import read_variables, read_dfs
+
 
 def id_format(prefix, i):
     return f"{prefix}_{i:02d}"
@@ -21,7 +29,7 @@ def sample_param(stat):
     dist = create_dist(mean, max_val, min_val)
     return dist.rvs()
 
-def info_students(stats, student_ids, output_path, seed):
+def info_students(stats, student_ids, output_path):
     student_rows = []
 
     grades = int(round(sample_param(stats["grades"])))
@@ -99,12 +107,13 @@ def constraints_teachers(stats, student_ids, teacher_ids, output_path):
               ["Student", "Teacher", "Together"],
               teacher_constraints)
 
-def group_preferences(num_students, num_groups, student_ids, output_path, seed):
+def group_preferences(num_students, num_groups, student_ids, output_path):
     min_group_size_ratio = sample_param(stats["min_group_size_ratio"])
-    min_group_size = math.ceil(num_students * min_group_size_ratio)
+    # min_group_size = math.ceil(num_students * min_group_size_ratio)
+    min_group_size = math.ceil(num_groups * min_group_size_ratio)
 
     max_extra_care_ratio = sample_param(stats["max_extra_care_ratio"])
-    num_extra_care = info_students(stats, student_ids, output_path, seed)
+    num_extra_care = info_students(stats, student_ids, output_path)
     max_extra_care = math.ceil(num_extra_care * max_extra_care_ratio)
 
     group_info = [[num_students, num_groups, min_group_size, max_extra_care]]
@@ -142,7 +151,7 @@ def generate_synthetic_school(stats, num_students, output_path, seed):
     teacher_ids = [id_format("T", i+1) for i in range(num_groups)]
 
     # info_students.csv
-    info_students(stats, student_ids, output_path, seed)
+    info_students(stats, student_ids, output_path)
 
     # constraints_students.csv
     constraints_students(stats, student_ids, output_path)
@@ -151,7 +160,7 @@ def generate_synthetic_school(stats, num_students, output_path, seed):
     constraints_teachers(stats, student_ids, teacher_ids, output_path)
 
     # group_preferences.csv
-    group_preferences(num_students, num_groups, student_ids, output_path, seed)
+    group_preferences(num_students, num_groups, student_ids, output_path)
 
     # info_teachers.csv
     info_teachers(teacher_ids, output_path)
@@ -171,8 +180,19 @@ if __name__ == "__main__":
     for i in num_students:
         # Different seed for each school based on number of students
         seed = base_seed + i
-        out_path = f"data/processed_data/synthetic_school_{i}"
+        school = f"synthetic_school_{i}"
+        out_path = os.path.join(folder, school)
         generate_synthetic_school(stats, i, output_path=out_path, seed=seed)
+
+        # Validate data
+        data = read_dfs(school=school, processed_data_folder="data/processed_data")
+        variables = read_variables(data)
+
+        is_valid = validate_grouping_data(data, variables)
+        if is_valid == False:
+            exit("Grouping data for {} is invalid. Please check the errors above.".format(school))
+        else:
+            print("Grouping data for {} is valid.".format(school))
 
 
 
