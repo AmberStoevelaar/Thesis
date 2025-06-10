@@ -239,7 +239,8 @@ def run_evaluate(school, processed_data_folder, method, groups, timestamp):
 
     # Balances
     balance = {}
-    categorical_attributes = ['Gender', 'Grade', 'Extra Care', 'Behavior']
+    # categorical_attributes = ['Gender', 'Grade', 'Extra Care', 'Behavior']
+    categorical_attributes = ['Gender', 'Grade', 'Extra Care', 'Behavior', 'Learning', 'Combination']
 
     for attr in categorical_attributes:
         if attr in merged.columns:

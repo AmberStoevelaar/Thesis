@@ -74,6 +74,12 @@ def prettify_subcategory(category, subcat):
     elif category == "Behavior":
         if subcat.lower() == "yes":
             return "Behavior"
+    elif category == "Learning":
+        if subcat.lower() == "yes":
+            return "Learning"
+    elif category == "Combination":
+        if subcat.lower() == "yes":
+            return "Combination"
     else:
         return subcat
 

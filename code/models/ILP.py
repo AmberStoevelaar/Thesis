@@ -8,7 +8,7 @@ import os
 import math
 import sys
 from datetime import datetime
-from helpers import create_preference_matrix, read_dfs, read_variables, estimated_max_prefs, estimated_max_balance_penalty, estimated_max_fairness
+from helpers import create_preference_matrix, read_dfs, read_variables, estimated_max_balance_penalty, estimated_max_fairness
 
 def create_initial_model(students, teachers, data, variables):
     model = Model("ilp")
@@ -42,6 +42,8 @@ def add_objective(model, students, teachers, x, data, variables):
         # improving fairness for students with fewer preferences met first
         weight = 10 ** (max_k - k)
         fairness_terms.append(weight * met_k)
+
+    print("Fairness terms (ILP):", fairness_terms[:5])
 
     # Scale each objective by its estimated max value to normalize
     balance_scale = 1 / max(1, estimated_max_balance_penalty(data, attributes_to_balance, teachers))

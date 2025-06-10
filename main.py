@@ -57,7 +57,7 @@ if __name__ == "__main__":
         timelimit = int(sys.argv[3])
 
     # Set minimum preferences per kid (default 1)
-    min_prefs_per_kid = int(sys.argv[4]) if len(sys.argv) > 4 else 1
+    min_prefs_per_kid = int(sys.argv[4]) if len(sys.argv) > 4 else 5
 
     # Set deviation to 10% (default 0.1)
     deviation = float(sys.argv[5]) if len(sys.argv) > 5 else 0.1
@@ -66,6 +66,7 @@ if __name__ == "__main__":
     processed_data_folder = 'data/processed_data'
 
     # Run pipeline
+    print(f"school {school}, method {method}")
     run_pipeline()
 
 

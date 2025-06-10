@@ -54,6 +54,8 @@ def translate_dfs(info_teachers, info_students, group_preferences, constraints_s
     info_columns = ['Student', 'Grade', 'Gender', 'Extra Care', 'Preference 1', 'Preference 2', 'Preference 3', 'Preference 4', 'Preference 5']
     if info_students.shape[1] == 10:
         info_columns.insert(4, 'Behavior')
+    if info_students.shape[1] == 12:
+        info_columns[4:4] = ["Behavior", "Learning", "Combination"]
 
     info_students.columns = info_columns
 
@@ -62,6 +64,11 @@ def translate_dfs(info_teachers, info_students, group_preferences, constraints_s
     info_students['Extra Care'] = info_students['Extra Care'].replace({'Ja': 'Yes', 'Nee': 'No'})
     if 'Behavior' in info_students.columns:
         info_students['Behavior'] = info_students['Behavior'].replace({'Ja': 'Yes', 'Nee': 'No'})
+    if 'Learning' in info_students.columns:
+        info_students['Learning'] = info_students['Learning'].replace({'Ja': 'Yes', 'Nee': 'No'})
+    if 'Combination' in info_students.columns:
+        info_students['Combination'] = info_students['Combination'].replace({'Ja': 'Yes', 'Nee': 'No'})
+
 
     constraints_students['Together'] = constraints_students['Together'].replace({'Ja': 'Yes', 'Nee': 'No'})
     constraints_teachers['Together'] = constraints_teachers['Together'].replace({'Ja': 'Yes', 'Nee': 'No'})

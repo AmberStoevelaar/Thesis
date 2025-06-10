@@ -5,7 +5,7 @@ import csv
 import time
 from datetime import datetime
 import pandas as pd
-from helpers import create_preference_matrix, read_dfs, read_variables, estimated_max_prefs, estimated_max_balance_penalty, estimated_max_fairness
+from helpers import create_preference_matrix, read_dfs, read_variables, estimated_max_balance_penalty, estimated_max_fairness
 
 def create_initial_model(students, teachers, data, variables):
     model = cp_model.CpModel()
@@ -22,9 +22,14 @@ def create_initial_model(students, teachers, data, variables):
     return model, x
 
 def add_objective(model, x, students, teachers, data, variables):
+    # attributes_to_balance = ['Gender', 'Extra Care']
     attributes_to_balance = ['Gender', 'Grade', 'Extra Care']
     if 'Behavior' in data.info_students.columns:
         attributes_to_balance.append('Behavior')
+    # if 'Learning' in data.info_students.columns:
+    #     attributes_to_balance.append('Learning')
+    # if 'Combination' in data.info_students.columns:
+    #     attributes_to_balance.append('Combination')
 
     balance_penalty_terms = add_balance(model, x, attributes_to_balance, teachers, data)
 
@@ -39,6 +44,8 @@ def add_objective(model, x, students, teachers, data, variables):
         # improving fairness for students with fewer preferences met first
         weight = 10 ** (max_k - k)
         fairness_terms.append(weight * met_k)
+
+    print("Fairness terms (CP):", fairness_terms[:5])
 
     # Scale each objective by its estimated max value to normalize
     balance_scale = 1 / max(1, estimated_max_balance_penalty(data, attributes_to_balance, teachers))
@@ -216,14 +223,18 @@ def add_hard_constraints(model, x, students, teachers, data, variables, preferen
 
     # Add balance constraints
     model = add_balance_constraints(model, 'Gender', deviation, x, teachers, data)
-    model = add_balance_constraints(model, 'Grade', deviation, x, teachers, data)
+    # model = add_balance_constraints(model, 'Grade', deviation, x, teachers, data)
     model = add_balance_constraints(model, 'Extra Care', deviation, x, teachers, data)
 
     # Add balance constraints for behavior if specified
     if 'Behavior' in data.info_students.columns:
         model = add_balance_constraints(model, 'Behavior', deviation, x, teachers, data)
+    if 'Learning' in data.info_students.columns:
+        model = add_balance_constraints(model, 'Learning', deviation, x, teachers, data)
+    if 'Combination' in data.info_students.columns:
+        model = add_balance_constraints(model, 'Learning', deviation, x, teachers, data)
     else:
-        print("No 'Behavior' attribute found in the data. Skipping balancing constraints for behavior.")
+        print("No extra attributes found in the data.")
 
     return model
 

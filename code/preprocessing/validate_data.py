@@ -60,25 +60,51 @@ def build_together_groups(data):
 
     return groups
 
+# def can_separate(graph, n_groups):
+#     color = {}
+
+#     def dfs(student, c, component):
+#         if student in color:
+#             return color[student] == c
+#         color[student] = c
+#         component.add(student)
+#         for neighbor in graph[student]:
+#             if not dfs(neighbor, (c + 1) % n_groups, component):
+#                 return False
+#         return True
+
+#     for student in graph:
+#         if student not in color:
+#             component = set()
+#             if not dfs(student, 0, component):
+#                 return False, component
+#     return True, None
+
 def can_separate(graph, n_groups):
     color = {}
 
-    def dfs(student, c, component):
-        if student in color:
-            return color[student] == c
-        color[student] = c
-        component.add(student)
-        for neighbor in graph[student]:
-            if not dfs(neighbor, (c + 1) % n_groups, component):
-                return False
-        return True
+    def is_valid(student, c):
+        return all(color.get(neigh) != c for neigh in graph[student])
 
-    for student in graph:
-        if student not in color:
-            component = set()
-            if not dfs(student, 0, component):
-                return False, component
-    return True, None
+    def backtrack(students, idx):
+        if idx == len(students):
+            return True
+        student = students[idx]
+        for c in range(n_groups):
+            if is_valid(student, c):
+                color[student] = c
+                if backtrack(students, idx + 1):
+                    return True
+                del color[student]
+        return False
+
+    students = list(graph.keys())
+    success = backtrack(students, 0)
+    if success:
+        return True, None
+    else:
+        return False, set(students)
+
 
 
 def check_conflicting_constraints(data, groups):
