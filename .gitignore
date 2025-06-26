@@ -1,0 +1,14 @@
+# DS store
+.DS_Store
+
+# Cache
+__pycache__
+
+# Everything from data folder
+data/*
+
+# Final results
+final_results/*
+
+# Mean file
+mean.py
